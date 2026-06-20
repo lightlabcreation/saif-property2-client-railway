@@ -1,0 +1,1104 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                Int                @id @default(autoincrement())
+  email             String?            @unique(map: "User_email_key")
+  password          String?
+  name              String?
+  role              Role               @default(TENANT)
+  phone             String?
+  type              TenantType         @default(INDIVIDUAL)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  bedroomId         Int?
+  buildingId        Int?
+  companyDetails    String?            @db.Text
+  companyName       String?
+  firstName         String?
+  inviteExpires     DateTime?
+  inviteToken       String?            @unique
+  lastName          String?
+  unitId            Int?
+  city              String?
+  country           String?
+  postalCode        String?
+  state             String?
+  street            String?
+  leaseId           Int?
+  parentId          Int?
+  companyId         Int?
+  communicationLogs CommunicationLog[]
+  companyContacts   CompanyContact[]
+  documents         Document[]
+  insurances        Insurance[]
+  invoices          Invoice[]
+  leases            Lease[]            @relation("TenantLeases")
+  receivedMessages  Message[]          @relation("ReceivedMessages")
+  sentMessages      Message[]          @relation("SentMessages")
+  properties        Property[]         @relation("ownerproperties")
+  refreshTokens     RefreshToken[]
+  refundAdjustments RefundAdjustment[]
+  tickets           Ticket[]
+  residentLease     Lease?             @relation("LeaseResidents", fields: [leaseId], references: [id])
+  parent            User?              @relation("TenantResidents", fields: [parentId], references: [id])
+  residents         User[]             @relation("TenantResidents")
+  company           Company?           @relation("CompanyUsers", fields: [companyId], references: [id])
+  quickBooksConfig  QuickBooksConfig?
+  vehicles          Vehicle[]          @relation("TenantVehicles")
+  title             String? // Identification title (e.g. Property Manager)
+  isInvited         Boolean            @default(false)
+  isActive          Boolean            @default(true)
+  permissions       Permission[]
+  unit              Unit?              @relation(fields: [unitId], references: [id])
+  reservedUnits     Unit[]             @relation("UnitReservedByUser")
+  reservedBedrooms  Bedroom[]          @relation("BedroomReservedByUser")
+  building          Property?          @relation("BuildingTenants", fields: [buildingId], references: [id])
+  preferredLanguage String?            @default("English")
+  auditLogs         AuditLog[]
+  shuttleUserId     String? // External ID for Morgan Shuttle App
+
+  // --- Move-In / Move-Out / Inspection ---
+  inspections       Inspection[]  @relation("Inspector")
+  managedMoveOuts   MoveOut[]     @relation("Manager")
+  overriddenMoveIns MoveIn[]      @relation("OverrideUser")
+  unitHistory       UnitHistory[]
+  seriesCreated     TemplateSeries[] @relation("SeriesCreator")
+
+  @@index([unitId], map: "user_unitId_fkey")
+  @@index([buildingId], map: "user_buildingId_fkey")
+  @@index([leaseId], map: "user_leaseId_fkey")
+  @@index([parentId], map: "user_parentId_fkey")
+  @@index([companyId], map: "user_companyId_fkey")
+  @@map("user")
+}
+
+model Company {
+  id               Int        @id @default(autoincrement())
+  name             String     @unique
+  primaryContactId Int?
+  email            String?
+  phone            String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  users            User[]     @relation("CompanyUsers")
+  properties       Property[] @relation("CompanyProperties")
+
+  @@map("company")
+}
+
+model CompanyContact {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  name      String
+  email     String
+  phone     String?
+  role      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company   User     @relation(fields: [companyId], references: [id])
+
+  @@index([companyId], map: "companycontact_companyId_fkey")
+  @@map("companycontact")
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique(map: "RefreshToken_token_key")
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], map: "RefreshToken_userId_fkey")
+
+  @@index([userId], map: "RefreshToken_userId_fkey")
+  @@map("refreshtoken")
+}
+
+model Property {
+  id               Int               @id @default(autoincrement())
+  name             String
+  address          String
+  status           String            @default("Active")
+  companyId        Int?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  city             String?
+  civicNumber      String?
+  postalCode       String?
+  province         String?
+  street           String?
+  documents        Document[]
+  maintenanceTasks MaintenanceTask[]
+  owners           User[]            @relation("ownerproperties")
+  tenants          User[]            @relation("BuildingTenants")
+  company          Company?          @relation("CompanyProperties", fields: [companyId], references: [id])
+  units            Unit[]
+  Ticket           Ticket[]
+
+  @@index([companyId], map: "Property_companyId_fkey")
+  @@map("property")
+}
+
+model Unit {
+  id             Int              @id @default(autoincrement())
+  name           String
+  propertyId     Int
+  status         String           @default("Vacant") // Existing field (Keep for compatibility)
+  bedrooms       Int              @default(1)
+  rentAmount     Decimal          @default(0.00)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  rentalMode     RentalMode       @default(FULL_UNIT)
+  floor          Int?
+  unitNumber     String?
+  unitType       String?
+  classification String           @default("Completed") // New Construction vs Completed
+  unit_type      UnitTypeCategory @default(COMPLETED)
+  is_priority    Boolean          @default(false)
+
+  // --- NEW: Unit Readiness & Reservation Module ---
+  unit_status         UnitStatus         @default(INACTIVE)
+  availability_status AvailabilityStatus @default(Unavailable)
+  ready_for_leasing   Boolean            @default(false)
+  current_owner       UnitOwner?
+  current_stage       String?
+  status_note         String?            @db.Text
+
+  // Section 1: GC Workflow
+  gc_delivered_target_date    DateTime?
+  gc_delivered_target_manual  Boolean   @default(false)
+  gc_delivered_completed      Boolean   @default(false)
+  gc_delivered_completed_date DateTime?
+
+  gc_deficiencies_target_date    DateTime?
+  gc_deficiencies_target_manual  Boolean   @default(false)
+  gc_deficiencies_completed      Boolean   @default(false)
+  gc_deficiencies_completed_date DateTime?
+
+  gc_cleaned_target_date    DateTime?
+  gc_cleaned_target_manual  Boolean   @default(false)
+  gc_cleaned_completed      Boolean   @default(false)
+  gc_cleaned_completed_date DateTime?
+
+  // Section 2: Operations Workflow
+  ffe_installed_target_date    DateTime?
+  ffe_installed_target_manual  Boolean   @default(false)
+  ffe_installed_completed      Boolean   @default(false)
+  ffe_installed_completed_date DateTime?
+
+  ose_installed_target_date    DateTime?
+  ose_installed_target_manual  Boolean   @default(false)
+  ose_installed_completed      Boolean   @default(false)
+  ose_installed_completed_date DateTime?
+
+  final_cleaning_target_date    DateTime?
+  final_cleaning_target_manual  Boolean   @default(false)
+  final_cleaning_completed      Boolean   @default(false)
+  final_cleaning_completed_date DateTime?
+
+  // Step 7: Unit Ready (Auto)
+  unit_ready_target_date    DateTime?
+  unit_ready_target_manual  Boolean   @default(false)
+  unit_ready_completed      Boolean   @default(false)
+  unit_ready_completed_date DateTime?
+
+  // Reservation Section
+  reserved_flag          Boolean   @default(false)
+  reserved_by_id         Int?
+  reservation_date       DateTime?
+  tentative_move_in_date DateTime?
+  reserved_by_user       User?     @relation("UnitReservedByUser", fields: [reserved_by_id], references: [id])
+  // ------------------------------------------------
+
+  bedroomsList      Bedroom[]
+  documents         Document[]
+  insurances        Insurance[]
+  invoices          Invoice[]
+  leases            Lease[]
+  refundAdjustments RefundAdjustment[]
+  users             User[]
+  property          Property           @relation(fields: [propertyId], references: [id], map: "Unit_propertyId_fkey")
+
+  // --- Move-In / Move-Out / Inspection ---
+  moveOuts    MoveOut[]
+  moveIns     MoveIn[]
+  prepTasks   UnitPrepTask[]
+  unitHistory UnitHistory[]
+  inspections Inspection[]
+  Ticket      Ticket[]
+
+  @@index([propertyId], map: "Unit_propertyId_fkey")
+  @@index([unit_status])
+  @@index([availability_status])
+  @@index([reserved_flag])
+  @@map("unit")
+}
+
+model Bedroom {
+  id            Int      @id @default(autoincrement())
+  bedroomNumber String
+  roomNumber    Int
+  unitId        Int
+  status        String   @default("Vacant")
+  rentAmount    Decimal  @default(0.000000000000000000000000000000)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Reservation Section
+  reserved_flag          Boolean   @default(false)
+  reserved_by_id         Int?
+  reservation_date       DateTime?
+  tentative_move_in_date DateTime?
+  reserved_by_user       User?     @relation("BedroomReservedByUser", fields: [reserved_by_id], references: [id])
+
+  unit   Unit    @relation(fields: [unitId], references: [id], map: "Bedroom_unitId_fkey")
+  leases Lease[]
+
+  @@index([unitId], map: "Bedroom_unitId_fkey")
+  @@index([reserved_flag])
+  @@map("bedroom")
+}
+
+model Lease {
+  id              Int         @id @default(autoincrement())
+  unitId          Int
+  tenantId        Int
+  startDate       DateTime?
+  endDate         DateTime?
+  status          String      @default("Active")
+  monthlyRent     Decimal?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  securityDeposit Decimal?
+  bedroomId       Int?
+  leaseType       LeaseType   @default(FULL_UNIT)
+  documents       Document[]
+  insurances      Insurance[]
+  invoices        Invoice[]
+  tenant          User        @relation("TenantLeases", fields: [tenantId], references: [id], map: "Lease_tenantId_fkey")
+  unit            Unit        @relation(fields: [unitId], references: [id], map: "Lease_unitId_fkey")
+  bedroom         Bedroom?    @relation(fields: [bedroomId], references: [id])
+  residents       User[]      @relation("LeaseResidents")
+  vehicles        Vehicle[]   @relation("LeaseVehicles")
+
+  // --- Move-In / Move-Out / Inspection ---
+  moveIn      MoveIn?
+  moveOut     MoveOut?
+  inspections Inspection[]
+
+  @@index([tenantId], map: "Lease_tenantId_fkey")
+  @@index([unitId], map: "Lease_unitId_fkey")
+  @@index([bedroomId], map: "lease_bedroomId_fkey")
+  @@map("lease")
+}
+
+model Insurance {
+  id                 Int             @id @default(autoincrement())
+  userId             Int
+  provider           String
+  policyNumber       String
+  startDate          DateTime
+  endDate            DateTime
+  documentUrl        String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  coverageType       String?
+  leaseId            Int?
+  rejectionReason    String?         @db.Text
+  notes              String?         @db.Text
+  status             InsuranceStatus @default(PENDING_APPROVAL)
+  unitId             Int?
+  uploadedDocumentId Int?
+  user               User            @relation(fields: [userId], references: [id], map: "Insurance_userId_fkey")
+  lease              Lease?          @relation(fields: [leaseId], references: [id])
+  unit               Unit?           @relation(fields: [unitId], references: [id])
+  document           Document?       @relation("InsuranceDocument", fields: [uploadedDocumentId], references: [id])
+
+  @@index([userId], map: "Insurance_userId_fkey")
+  @@index([leaseId], map: "insurance_leaseId_fkey")
+  @@index([unitId], map: "insurance_unitId_fkey")
+  @@index([uploadedDocumentId], map: "insurance_uploadedDocumentId_fkey")
+  @@map("insurance")
+}
+
+model Document {
+  id              Int            @id @default(autoincrement())
+  userId          Int?
+  name            String
+  type            String
+  expiryDate      DateTime?
+  fileUrl         String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  invoiceId       Int?
+  leaseId         Int?
+  propertyId      Int?
+  unitId          Int?
+  emailTemplateId Int?
+  user            User?          @relation(fields: [userId], references: [id], map: "Document_userId_fkey")
+  invoice         Invoice?       @relation(fields: [invoiceId], references: [id])
+  lease           Lease?         @relation(fields: [leaseId], references: [id])
+  property        Property?      @relation(fields: [propertyId], references: [id])
+  unit            Unit?          @relation(fields: [unitId], references: [id])
+  emailTemplate   EmailTemplate? @relation(fields: [emailTemplateId], references: [id])
+  links           DocumentLink[]
+  insuranceDocs   Insurance[]    @relation("InsuranceDocument")
+
+  @@index([userId], map: "Document_userId_fkey")
+  @@index([invoiceId], map: "document_invoiceId_fkey")
+  @@index([leaseId], map: "document_leaseId_fkey")
+  @@index([propertyId], map: "document_propertyId_fkey")
+  @@index([unitId], map: "document_unitId_fkey")
+  @@index([emailTemplateId], map: "document_emailTemplateId_fkey")
+  @@map("document")
+}
+
+model DocumentLink {
+  id         Int      @id @default(autoincrement())
+  documentId Int
+  entityType String
+  entityId   Int
+  document   Document @relation(fields: [documentId], references: [id])
+
+  @@index([documentId], map: "documentlink_documentId_fkey")
+  @@map("documentlink")
+}
+
+model EmailTemplate {
+  id                Int                @id @default(autoincrement())
+  name              String
+  subject           String
+  body              String             @db.Text
+  language          String             @default("en")
+  type              String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  communicationLogs CommunicationLog[]
+  documents         Document[]
+
+  @@map("emailtemplate")
+}
+
+model CommunicationLog {
+  id             Int            @id @default(autoincrement())
+  channel        String
+  eventType      String
+  recipient      String
+  recipientId    Int?
+  relatedEntity  String?
+  entityId       Int?
+  content        String?        @db.Text
+  subject        String?
+  status         String         @default("Sent")
+  hasAttachments Boolean        @default(false)
+  templateId     Int?
+  timestamp      DateTime       @default(now())
+  deliveredAt    DateTime?
+  openedAt       DateTime?
+  recipientUser  User?          @relation(fields: [recipientId], references: [id])
+  emailTemplate  EmailTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([recipientId], map: "communicationlog_recipientId_fkey")
+  @@index([templateId], map: "communicationlog_templateId_fkey")
+  @@map("communicationlog")
+}
+
+model Ticket {
+  id             Int         @id @default(autoincrement())
+  userId         Int
+  subject        String
+  description    String
+  priority       String      @default("Low")
+  status         String      @default("Open")
+  attachmentUrls String?     @db.Text
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  propertyId     Int?
+  unitId         Int?
+  category       String?
+  type           String?     @default("REPAIR")
+  source         String? // MOVE_OUT_INSPECTION, MOVE_IN_INSPECTION, MAINTENANCE
+  isRequired     Boolean     @default(false)
+  inspectionId   Int?
+  user           User        @relation(fields: [userId], references: [id], map: "Ticket_userId_fkey")
+  inspection     Inspection? @relation(fields: [inspectionId], references: [id])
+  property       Property?   @relation(fields: [propertyId], references: [id])
+  unit           Unit?       @relation(fields: [unitId], references: [id])
+  blockingStatus BlockingStatus @default(NON_BLOCKING)
+
+  @@index([userId], map: "Ticket_userId_fkey")
+  @@map("ticket")
+}
+
+model Invoice {
+  id            Int               @id @default(autoincrement())
+  invoiceNo     String            @unique(map: "Invoice_invoiceNo_key")
+  tenantId      Int
+  unitId        Int
+  month         String
+  amount        Decimal
+  rent          Decimal
+  serviceFees   Decimal           @default(0.000000000000000000000000000000)
+  status        String            @default("draft")
+  paidAt        DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  dueDate       DateTime?
+  paymentMethod String?
+  balanceDue    Decimal           @default(0.000000000000000000000000000000)
+  paidAmount    Decimal           @default(0.000000000000000000000000000000)
+  leaseId       Int?
+  leaseType     String?
+  category      InvoiceCategory   @default(RENT)
+  description   String?           @db.Text
+  documents     Document[]
+  items         InvoiceLineItem[]
+  tenant        User              @relation(fields: [tenantId], references: [id], map: "Invoice_tenantId_fkey")
+  unit          Unit              @relation(fields: [unitId], references: [id], map: "Invoice_unitId_fkey")
+  lease         Lease?            @relation(fields: [leaseId], references: [id])
+  payments      Payment[]
+  transactions  Transaction[]
+
+  @@index([tenantId], map: "Invoice_tenantId_fkey")
+  @@index([unitId], map: "Invoice_unitId_fkey")
+  @@index([leaseId], map: "invoice_leaseId_fkey")
+  @@map("invoice")
+}
+
+model InvoiceLineItem {
+  id          Int      @id @default(autoincrement())
+  invoiceId   Int
+  description String   @db.Text
+  amount      Decimal
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId], map: "invoicelineitem_invoiceId_fkey")
+  @@map("invoicelineitem")
+}
+
+model Payment {
+  id           Int           @id @default(autoincrement())
+  invoiceId    Int
+  amount       Decimal
+  method       String
+  reference    String?
+  date         DateTime      @default(now())
+  invoice      Invoice       @relation(fields: [invoiceId], references: [id])
+  transactions Transaction[]
+
+  @@index([invoiceId], map: "payment_invoiceId_fkey")
+  @@map("payment")
+}
+
+model MaintenanceTask {
+  id         Int       @id @default(autoincrement())
+  name       String
+  propertyId Int?
+  type       String
+  frequency  String
+  dueDate    DateTime
+  vendor     String
+  status     String    @default("Upcoming")
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  property   Property? @relation(fields: [propertyId], references: [id], map: "MaintenanceTask_propertyId_fkey")
+
+  @@index([propertyId], map: "MaintenanceTask_propertyId_fkey")
+  @@map("maintenancetask")
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  description String
+  type        String
+  amount      Decimal
+  balance     Decimal  @default(0.000000000000000000000000000000)
+  status      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  accountId   Int?
+  invoiceId   Int?
+  paymentId   Int?
+  account     Account? @relation(fields: [accountId], references: [id])
+  invoice     Invoice? @relation(fields: [invoiceId], references: [id])
+  payment     Payment? @relation(fields: [paymentId], references: [id])
+
+  @@index([accountId], map: "transaction_accountId_fkey")
+  @@index([invoiceId], map: "transaction_invoiceId_fkey")
+  @@index([paymentId], map: "transaction_paymentId_fkey")
+  @@map("transaction")
+}
+
+model Communication {
+  id        Int      @id @default(autoincrement())
+  type      String
+  recipient String
+  subject   String?
+  message   String
+  status    String   @default("Sent")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("communication")
+}
+
+model Message {
+  id            Int      @id @default(autoincrement())
+  content       String   @db.Text
+  senderId      Int
+  receiverId    Int
+  isRead        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  smsSid        String? // Twilio message SID
+  smsStatus     String? // SMS delivery status: sent, delivered, failed, etc.
+  sentVia       String   @default("app") // Channel: app, sms, or both
+  receiver      User     @relation("ReceivedMessages", fields: [receiverId], references: [id], map: "Message_receiverId_fkey")
+  sender        User     @relation("SentMessages", fields: [senderId], references: [id], map: "Message_senderId_fkey")
+  isReadByAdmin Boolean  @default(false)
+  direction     String   @default("OUTBOUND")
+
+  @@index([receiverId], map: "Message_receiverId_fkey")
+  @@index([senderId], map: "Message_senderId_fkey")
+  @@map("message")
+}
+
+model SystemSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique(map: "SystemSetting_key_key")
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("systemsetting")
+}
+
+model Tax {
+  id        Int       @id @default(autoincrement())
+  name      String
+  rate      Decimal   @default(0.00) @db.Decimal(10, 2)
+  appliesTo String    @default("Rent") @db.VarChar(50)
+  status    TaxStatus @default(active)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@map("taxes")
+}
+
+model Account {
+  id             Int           @id @default(autoincrement())
+  accountName    String
+  assetType      String
+  openingBalance Decimal       @default(0.00) @db.Decimal(10, 2)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  transactions   Transaction[]
+
+  @@map("accounts")
+}
+
+model SMSTemplate {
+  id        Int      @id @default(autoincrement())
+  name      String
+  content   String   @db.Text
+  category  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("smstemplate")
+}
+
+model SMSCampaign {
+  id              Int      @id @default(autoincrement())
+  name            String
+  senderId        Int
+  status          String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  totalRecipients Int      @default(0)
+  successCount    Int      @default(0)
+  failedCount     Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  buildingId      Int?
+  recipientIds    String?  @db.Text // Comma-separated user IDs for custom selections
+
+  @@map("smscampaign")
+}
+
+model RefundAdjustment {
+  id              Int       @id @default(autoincrement())
+  requestId       String    @unique(map: "RefundAdjustment_requestId_key")
+  type            String
+  reason          String
+  tenantId        Int
+  unitId          Int
+  amount          Decimal
+  date            DateTime
+  status          String    @default("Pending")
+  issuedDate      DateTime?
+  method          String?
+  referenceNumber String?
+  proofUrl        String?
+  outcomeReason   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  createdBy       Int?
+  tenant          User      @relation(fields: [tenantId], references: [id], map: "RefundAdjustment_tenantId_fkey")
+  unit            Unit      @relation(fields: [unitId], references: [id], map: "RefundAdjustment_unitId_fkey")
+
+  @@index([tenantId], map: "RefundAdjustment_tenantId_fkey")
+  @@index([unitId], map: "RefundAdjustment_unitId_fkey")
+  @@map("refundadjustment")
+}
+
+model RentRun {
+  id           Int          @id @default(autoincrement())
+  runDate      DateTime     @default(now())
+  status       String       @default("PENDING")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  successCount Int          @default(0)
+  failedCount  Int          @default(0)
+  skippedCount Int          @default(0)
+  totalAmount  Decimal      @default(0.000000000000000000000000000000)
+  logs         RentRunLog[]
+
+  @@map("rentrun")
+}
+
+model RentRunLog {
+  id        Int      @id @default(autoincrement())
+  rentRunId Int
+  message   String   @db.Text
+  createdAt DateTime @default(now())
+  rentRun   RentRun  @relation(fields: [rentRunId], references: [id], map: "RentRunLog_rentRunId_fkey")
+
+  @@index([rentRunId], map: "RentRunLog_rentRunId_fkey")
+  @@map("rentrunlog")
+}
+
+model UnitType {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("unittype")
+}
+
+model QuickBooksConfig {
+  id           Int     @id @default(autoincrement())
+  userId       Int     @unique
+  accessToken  String? @db.Text
+  refreshToken String? @db.Text
+  realmId      String?
+
+  // Config
+  autoSync               Boolean @default(false)
+  frequency              String  @default("realtime")
+  accountFullUnitRent    String?
+  accountBedroomRent     String?
+  accountSecurityDeposit String?
+  accountLateFees        String?
+
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("quickbooksconfig")
+}
+
+enum InsuranceStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRING
+  EXPIRED
+  REJECTED
+  ARCHIVED
+}
+
+enum InvoiceCategory {
+  RENT
+  SERVICE
+  SECURITY_DEPOSIT
+}
+
+enum TenantType {
+  INDIVIDUAL
+  COMPANY
+  RESIDENT
+}
+
+enum LeaseType {
+  FULL_UNIT
+  BEDROOM
+}
+
+enum Role {
+  ADMIN
+  OWNER
+  TENANT
+  COWORKER
+}
+
+enum RentalMode {
+  FULL_UNIT
+  BEDROOM_WISE
+}
+
+enum TaxStatus {
+  active
+  inactive
+}
+
+model Vehicle {
+  id           Int      @id @default(autoincrement())
+  tenantId     Int
+  leaseId      Int? // Linked to the lease for authorization check
+  make         String
+  model        String
+  color        String
+  licensePlate String   @unique
+  parkingSpace String?
+  photo1Url    String?
+  photo2Url    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant User   @relation("TenantVehicles", fields: [tenantId], references: [id])
+  lease  Lease? @relation("LeaseVehicles", fields: [leaseId], references: [id])
+
+  @@index([tenantId], map: "vehicle_tenantId_fkey")
+  @@index([leaseId], map: "vehicle_leaseId_fkey")
+  @@map("vehicle")
+}
+
+model Permission {
+  id         Int     @id @default(autoincrement())
+  userId     Int
+  moduleName String // The section name (e.g. "Tenants", "Invoices")
+  canView    Boolean @default(false)
+  canAdd     Boolean @default(false)
+  canEdit    Boolean @default(false)
+  canDelete  Boolean @default(false)
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("permission")
+}
+
+model ServiceFeeItem {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  amount    Decimal  @default(0.00) @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("servicefeeitems")
+}
+
+model UnitTypeRate {
+  id                Int      @id @default(autoincrement())
+  typeName          String   @unique
+  fullUnitRate      Decimal  @default(0.00) @db.Decimal(10, 2)
+  singleBedroomRate Decimal  @default(0.00) @db.Decimal(10, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("unittyperates")
+}
+
+model TimelineSetting {
+  id   Int    @id @default(autoincrement())
+  key  String @unique
+  days Int
+
+  @@map("timelinesetting")
+}
+
+enum UnitStatus {
+  INACTIVE
+  ACTIVE
+}
+
+enum AvailabilityStatus {
+  Unavailable
+  Available
+  Reserved
+  Occupied
+}
+
+enum UnitOwner {
+  GC
+  OPERATIONS
+}
+
+enum UnitTypeCategory {
+  NEW_CONSTRUCTION
+  COMPLETED
+}
+
+model Holiday {
+  id   Int      @id @default(autoincrement())
+  date DateTime @unique
+  name String
+
+  @@map("holiday")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  action    String
+  entity    String
+  entityId  Int?
+  details   String?  @db.Text
+  timestamp DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@map("auditlog")
+}
+
+// --- PHASE 1: Move-In / Move-Out / Inspection Models ---
+
+model MoveOut {
+  id              Int           @id @default(autoincrement())
+  leaseId         Int           @unique
+  unitId          Int
+  bedroomId       Int?
+  status          MoveOutStatus @default(PENDING)
+  targetDate      DateTime?
+  actualDate      DateTime?
+  
+  // Scheduling Rule 2.3 & 2.4
+  visualDate      DateTime?
+  visualTime      String?
+  finalDate       DateTime?
+  finalTime       String?
+  
+  visualInspectionId  Int?
+  finalInspectionId   Int?
+  
+  managerApproved Boolean       @default(false)
+  managerId       Int?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  lease   Lease @relation(fields: [leaseId], references: [id])
+  unit    Unit  @relation(fields: [unitId], references: [id])
+  manager User? @relation("Manager", fields: [managerId], references: [id])
+
+  @@map("moveout")
+}
+
+model MoveIn {
+  id               Int          @id @default(autoincrement())
+  leaseId          Int?         @unique
+  unitId           Int
+  bedroomId        Int?
+  status           MoveInStatus @default(PENDING)
+  targetDate       DateTime?
+  actualDate       DateTime?
+  overrideFlag     Boolean      @default(false)
+  overrideReason   String?      @db.Text
+  overrideByUserId Int?
+  overrideAt       DateTime?
+  missingItems     Json? // Stores missing requirements like [Rent, Deposit, Insurance]
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  lease        Lease? @relation(fields: [leaseId], references: [id])
+  unit         Unit   @relation(fields: [unitId], references: [id])
+  overrideUser User?  @relation("OverrideUser", fields: [overrideByUserId], references: [id])
+
+  @@map("movein")
+}
+
+model InspectionTemplate {
+  id          Int            @id @default(autoincrement())
+  name        String
+  type        InspectionType
+  structure   Json?
+  isLocked    Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  inspections Inspection[]
+
+  @@map("inspectiontemplate")
+}
+
+model Inspection {
+  id                    Int              @id @default(autoincrement())
+  templateId            Int?
+  unitId                Int
+  bedroomId             Int?
+  leaseId               Int?
+  inspectorId           Int?
+  tenantSignature       String?          @db.Text
+  inspectorSignature    String?          @db.Text
+  noDeficiencyConfirmed Boolean          @default(false)
+  status                InspectionStatus @default(DRAFT)
+  completedAt           DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  template  InspectionTemplate?      @relation(fields: [templateId], references: [id])
+  unit      Unit                     @relation(fields: [unitId], references: [id])
+  lease     Lease?                   @relation(fields: [leaseId], references: [id])
+  inspector User?                    @relation("Inspector", fields: [inspectorId], references: [id])
+  responses InspectionItemResponse[]
+  tickets   Ticket[]
+
+  @@map("inspection")
+}
+
+model InspectionItemResponse {
+  id           Int               @id @default(autoincrement())
+  inspectionId Int
+  question     String
+  response     String
+  notes        String?           @db.Text
+  annotation   String?           @db.Text
+  photoUrl     String?           @db.Text
+  annotatedPhotoUrl String?      @db.Text
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  media        InspectionMedia[]
+
+  inspection Inspection @relation(fields: [inspectionId], references: [id])
+
+  @@map("inspectionitemresponse")
+}
+
+model InspectionMedia {
+  id          Int      @id @default(autoincrement())
+  responseId  Int
+  url         String
+  annotations String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  response InspectionItemResponse @relation(fields: [responseId], references: [id])
+
+  @@map("inspectionmedia")
+}
+
+model UnitPrepTask {
+  id          Int           @id @default(autoincrement())
+  unitId      Int
+  bedroomId   Int?
+  ticketId    Int?
+  stage       PrepTaskStage @default(PENDING_TICKETS)
+  isRequired  Boolean       @default(true)
+  status      String        @default("PENDING")
+  title       String?
+  description String?       @db.Text
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+
+  @@map("unitpreptask")
+}
+
+model UnitHistory {
+  id        Int      @id @default(autoincrement())
+  unitId    Int
+  bedroomId Int?
+  userId    Int
+  action    String
+  oldStatus String?
+  newStatus String?
+  timestamp DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
+
+  unit Unit @relation(fields: [unitId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("unithistory")
+}
+
+enum MoveInStatus {
+  PENDING
+  BLOCKED_IN_CONSTRUCTION
+  BLOCKED_IN_PREPARATION
+  REQUIREMENTS_PENDING
+  READY_FOR_MOVE_IN
+  INSPECTION_COMPLETED
+  OCCUPIED
+  CANCELLED
+}
+
+enum MoveOutStatus {
+  PENDING
+  CONFIRMED
+  VISUAL_INSPECTION_SCHEDULED
+  FINAL_INSPECTION_SCHEDULED
+  INSPECTION_IN_PROGRESS
+  INSPECTIONS_COMPLETED
+  COMPLETED
+  CANCELLED
+}
+
+enum InspectionType {
+  MOVE_IN
+  MOVE_OUT
+  VISUAL
+}
+
+enum InspectionStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+}
+
+enum PrepTaskStage {
+  PENDING_TICKETS
+  READY_FOR_CLEANING
+  CLEANING_IN_PROGRESS
+  CLEANING_COMPLETED
+  UNIT_READY
+}
+model TemplateSeries {
+  id          Int                @id @default(autoincrement())
+  name        String
+  description String?            @db.Text
+  responses   TemplateResponse[]
+  creatorId   Int?
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  creator     User?              @relation("SeriesCreator", fields: [creatorId], references: [id])
+
+  @@map("templateseries")
+}
+
+model TemplateResponse {
+  id        Int            @id @default(autoincrement())
+  seriesId  Int
+  label     String
+  color     String         @default("indigo")
+  order     Int            @default(0)
+  series    TemplateSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@index([seriesId])
+  @@map("templateresponse")
+}
+
+enum BlockingStatus {
+  NON_BLOCKING
+  MOVE_IN
+  MOVE_OUT
+  BOTH
+}

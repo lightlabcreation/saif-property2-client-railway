@@ -1,0 +1,45 @@
+const express = require('express');
+const router = express.Router();
+const adminController = require('./admin.controller');
+const unitController = require('./unit.controller');
+const propertyController = require('./property.controller');
+const userController = require('./user.controller');
+const authController = require('./auth.controller');
+const dashboardController = require('./dashboard.controller');
+const maintenanceController = require('./maintenance.controller');
+const announcementController = require('./announcement.controller');
+const utilityController = require('./utility.controller');
+const financeController = require('./finance.controller');
+const inventoryController = require('./inventory.controller');
+const supportController = require('./support.controller');
+const permissionController = require('./permission.controller');
+const logController = require('./log.controller');
+const notificationController = require('./notification.controller');
+const profileController = require('./profile.controller');
+const searchController = require('./search.controller');
+const uploadController = require('./upload.controller');
+const reportController = require('./report.controller');
+const communicationController = require('./communication.controller');
+const messageController = require('./message.controller');
+const analyticsController = require('./analytics.controller');
+const leaseController = require('./lease.controller');
+const insuranceController = require('./insurance.controller');
+const reportsController = require('./reports.controller');
+const settingsController = require('./settings.controller');
+const taxController = require('./tax.controller');
+const accountController = require('./account.controller');
+const documentController = require('./document.controller');
+const readinessController = require('./readiness.controller');
+
+const { checkPermission } = require('../../middlewares/permission.middleware');
+
+// Unit Readiness Module
+router.get('/readiness/dashboard', readinessController.getReadinessDashboard);
+router.get('/readiness/settings', readinessController.getSettings);
+router.put('/readiness/settings', readinessController.updateSettings);
+router.put('/readiness/update-step/:unitId', readinessController.updateWorkflowStep);
+
+// Existing Admin Routes (Partial list for context)
+router.get('/dashboard/stats', adminController.getDashboardStats);
+router.get('/properties', checkPermission('Buildings', 'view'), adminController.getProperties);
+// ... the rest of the file follows

@@ -1,0 +1,43 @@
+[2026-04-25T08:00:32.450Z] Lease Creation Transaction Error: tx.$transaction is not a function
+TypeError: tx.$transaction is not a function
+    at Object.syncMoveInStatus (C:\Users\91969\Documents\propert_saif\saif-property-client-railway\src\services\workflow.service.js:224:21)
+    at C:\Users\91969\Documents\propert_saif\saif-property-client-railway\src\modules\admin\lease.controller.js:958:35
+    at async Proxy._transactionWithCallback (C:\Users\91969\Documents\propert_saif\saif-property-client-railway\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at async C:\Users\91969\Documents\propert_saif\saif-property-client-railway\src\modules\admin\lease.controller.js:726:20
+
+[2026-05-01T05:55:40.706Z] Lease Creation Transaction Error: workflowService.normalizeToNoon is not a function
+TypeError: workflowService.normalizeToNoon is not a function
+    at C:\Users\Admin\Desktop\property_lightlab\backend\src\modules\admin\lease.controller.js:893:40
+    at async Proxy._transactionWithCallback (C:\Users\Admin\Desktop\property_lightlab\backend\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at async C:\Users\Admin\Desktop\property_lightlab\backend\src\modules\admin\lease.controller.js:761:20
+
+[2026-05-01T05:55:48.827Z] Lease Creation Transaction Error: workflowService.normalizeToNoon is not a function
+TypeError: workflowService.normalizeToNoon is not a function
+    at C:\Users\Admin\Desktop\property_lightlab\backend\src\modules\admin\lease.controller.js:893:40
+    at async Proxy._transactionWithCallback (C:\Users\Admin\Desktop\property_lightlab\backend\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at async C:\Users\Admin\Desktop\property_lightlab\backend\src\modules\admin\lease.controller.js:761:20
+
+[2026-05-01T06:18:01.065Z] Lease Creation Transaction Error: This unit is currently RESERVED for another prospect during construction. You cannot create a lease for a different tenant until the reservation is cleared.
+Error: This unit is currently RESERVED for another prospect during construction. You cannot create a lease for a different tenant until the reservation is cleared.
+    at C:\Users\Admin\Desktop\property_lightlab\backend\src\modules\admin\lease.controller.js:793:19
+    at async Proxy._transactionWithCallback (C:\Users\Admin\Desktop\property_lightlab\backend\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at async C:\Users\Admin\Desktop\property_lightlab\backend\src\modules\admin\lease.controller.js:761:20
+
+[2026-05-01T09:22:23.518Z] Lease Creation Transaction Error: This unit is currently RESERVED for another prospect during construction. You cannot create a lease for a different tenant until the reservation is cleared.
+Error: This unit is currently RESERVED for another prospect during construction. You cannot create a lease for a different tenant until the reservation is cleared.
+    at C:\Users\Admin\Desktop\property_lightlab\backend\src\modules\admin\lease.controller.js:793:19
+    at async Proxy._transactionWithCallback (C:\Users\Admin\Desktop\property_lightlab\backend\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at async C:\Users\Admin\Desktop\property_lightlab\backend\src\modules\admin\lease.controller.js:761:20
+
+[2026-05-01T09:22:28.662Z] Lease Creation Transaction Error: This unit is currently RESERVED for another prospect during construction. You cannot create a lease for a different tenant until the reservation is cleared.
+Error: This unit is currently RESERVED for another prospect during construction. You cannot create a lease for a different tenant until the reservation is cleared.
+    at C:\Users\Admin\Desktop\property_lightlab\backend\src\modules\admin\lease.controller.js:793:19
+    at async Proxy._transactionWithCallback (C:\Users\Admin\Desktop\property_lightlab\backend\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at async C:\Users\Admin\Desktop\property_lightlab\backend\src\modules\admin\lease.controller.js:761:20
+
+[2026-06-18T08:54:29.881Z] Lease Creation Transaction Error: Residents (Occupants) cannot hold direct leases. Please assign them as occupants in the Tenant module instead.
+Error: Residents (Occupants) cannot hold direct leases. Please assign them as occupants in the Tenant module instead.
+    at C:\Users\divya\OneDrive\Desktop\Save property\property2\src\modules\admin\lease.controller.js:779:19
+    at async Proxy._transactionWithCallback (C:\Users\divya\OneDrive\Desktop\Save property\property2\node_modules\@prisma\client\runtime\library.js:130:8000)
+    at async C:\Users\divya\OneDrive\Desktop\Save property\property2\src\modules\admin\lease.controller.js:768:20
+
