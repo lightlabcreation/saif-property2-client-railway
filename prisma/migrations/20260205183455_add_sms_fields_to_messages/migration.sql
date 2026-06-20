@@ -1,4 +1,0 @@
--- AlterTable
-ALTER TABLE `message` ADD COLUMN `sentVia` VARCHAR(191) NOT NULL DEFAULT 'app',
-    ADD COLUMN `smsSid` VARCHAR(191) NULL,
-    ADD COLUMN `smsStatus` VARCHAR(191) NULL;
