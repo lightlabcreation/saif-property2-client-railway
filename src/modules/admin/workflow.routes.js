@@ -22,6 +22,7 @@ router.put('/move-in/:moveInId/requirement', checkPermission('Move-In', 'edit'),
 router.get('/unit-prep', checkPermission('Unit Preparation', 'view'), workflowController.getUnitPrepDashboard);
 router.get('/unit-prep/export', checkPermission('Unit Preparation', 'view'), workflowController.exportUnitPrepPDF);
 router.put('/unit-prep/:unitId/stage', checkPermission('Unit Preparation', 'edit'), workflowController.updateUnitPrepStage);
+router.put('/unit-prep/:unitId/override', checkPermission('Unit Preparation', 'edit'), workflowController.overrideUnitPrepBlock);
 router.post('/move-out/trigger/:leaseId', workflowController.triggerMoveOut);
 router.put('/move-out/cancel/:leaseId', checkPermission('Move-Out', 'edit'), workflowController.cancelMoveOut);
 

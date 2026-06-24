@@ -573,6 +573,16 @@ const updateUnitPrepStage = async (req, res) => {
     }
 };
 
+const overrideUnitPrepBlock = async (req, res) => {
+    try {
+        const { unitId } = req.params;
+        const result = await workflowService.overrideUnitPrepBlock(parseInt(unitId), req.user.id);
+        res.json({ success: true, message: 'Unit Prep Block overridden successfully', data: result });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
 const triggerMoveOut = async (req, res) => {
     try {
         let leaseIdToUse = parseInt(req.params.leaseId);

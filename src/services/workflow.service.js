@@ -278,6 +278,35 @@ const updateUnitPrepStage = async (unitId, { stage, userId }) => {
 };
 
 /**
+ * Override Unit Preparation Block
+ */
+const overrideUnitPrepBlock = async (unitId, userId) => {
+    return await prisma.$transaction(async (tx) => {
+        // Update stage to READY_FOR_CLEANING, effectively unblocking it
+        await tx.unit.update({
+            where: { id: unitId },
+            data: { 
+                current_stage: 'READY_FOR_CLEANING',
+                status_note: 'Unblocked - Prep Tickets Overridden'
+            }
+        });
+
+        // Create history record for audit
+        await tx.unitHistory.create({
+            data: {
+                unitId,
+                userId,
+                action: 'PREP_OVERRIDDEN',
+                newStatus: 'READY_FOR_CLEANING',
+                timestamp: new Date()
+            }
+        });
+
+        return { success: true, stage: 'READY_FOR_CLEANING' };
+    });
+};
+
+/**
  * Sync Move-In Status (Dashboard Visibility)
  * Ensures a MoveIn record exists for any unit with a lease or reservation.
  */
@@ -833,6 +862,7 @@ module.exports = {
     completeInspection,
     overrideMoveIn,
     updateUnitPrepStage,
+    overrideUnitPrepBlock,
     syncMoveInStatus,
     createTicketsFromInspection,
     checkAndProgressUnitPrep,
