@@ -433,12 +433,9 @@ const generateInspectionPDF = async (inspection, res) => {
                 try {
                     const imgRes = await axios.get(resp.photoUrl, { responseType: 'arraybuffer' });
                     imgBuffer = Buffer.from(imgRes.data, 'binary');
-                    const img = doc.openImage(imgBuffer);
-                    
-                    let calcHeight = img.height * (imgWidth / img.width);
-                    if (calcHeight > maxImgHeight) calcHeight = maxImgHeight;
-                    
-                    imgHeight = calcHeight + 15;
+                    // We do not calculate height dynamically because phone EXIF rotation can skew raw width/height.
+                    // Instead, we assign a guaranteed fixed height block to prevent any overlaps.
+                    imgHeight = maxImgHeight + 15;
                 } catch (err) {
                     console.error('Photo fetch error:', err.message);
                 }
