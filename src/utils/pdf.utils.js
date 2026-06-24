@@ -404,12 +404,8 @@ const generateInspectionPDF = async (inspection, res) => {
         for (const [idx, resp] of roomResponses.entries()) {
             // Determine response color (Red for deficiency)
             const respText = (resp.response || '').toLowerCase();
-            const isNegative = respText.includes('no') || respText.includes('none') || respText.includes('not');
-            const hasProblem = respText.includes('yes') || respText.includes('visible') || respText.includes('damaged') || respText.includes('deficient');
-            
-            // Logic: It's a deficiency if it has problem keywords AND doesn't have negative qualifiers (like "No visible")
-            const isDeficiency = hasProblem && !isNegative;
-            
+            const negativeWords = ['poor', 'damaged', 'broken', 'dirty', 'repair', 'replace', 'deficient', 'bad', 'missing', 'issue', 'fail', 'yes', 'oui', 'endommagé', 'cassé', 'sale', 'mauvais', 'problème', 'tache'];
+            const isDeficiency = negativeWords.some(word => respText.includes(word));
             const respColor = isDeficiency ? colors.danger : colors.success;
 
             // Calculate height needed for question and notes
@@ -419,13 +415,18 @@ const generateInspectionPDF = async (inspection, res) => {
             let imgHeight = 0;
             let imgBuffer = null;
             const imgWidth = 200;
+            const maxImgHeight = 200;
 
             if (resp.photoUrl) {
                 try {
                     const imgRes = await axios.get(resp.photoUrl, { responseType: 'arraybuffer' });
                     imgBuffer = Buffer.from(imgRes.data, 'binary');
                     const img = doc.openImage(imgBuffer);
-                    imgHeight = img.height * (imgWidth / img.width) + 15;
+                    
+                    let calcHeight = img.height * (imgWidth / img.width);
+                    if (calcHeight > maxImgHeight) calcHeight = maxImgHeight;
+                    
+                    imgHeight = calcHeight + 15;
                 } catch (err) {
                     console.error('Photo fetch error:', err.message);
                 }
@@ -459,7 +460,7 @@ const generateInspectionPDF = async (inspection, res) => {
             }
 
             if (imgBuffer) {
-                doc.image(imgBuffer, 80, currentY + qHeight + nHeight + 12, { width: imgWidth });
+                doc.image(imgBuffer, 80, currentY + qHeight + nHeight + 12, { fit: [imgWidth, maxImgHeight] });
             }
 
             doc.fillColor(respColor).font('Helvetica-Bold').fontSize(9).text((resp.response || 'N/A').toUpperCase(), 400, currentY + 7, { width: 140 });
