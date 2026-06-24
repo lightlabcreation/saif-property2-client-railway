@@ -402,10 +402,22 @@ const generateInspectionPDF = async (inspection, res) => {
         currentY += 18;
 
         for (const [idx, resp] of roomResponses.entries()) {
-            // Determine response color (Red for deficiency)
+            // Determine response color (Red for deficiency) intelligently based on question
             const respText = (resp.response || '').toLowerCase();
-            const negativeWords = ['poor', 'damaged', 'broken', 'dirty', 'repair', 'replace', 'deficient', 'bad', 'missing', 'issue', 'fail', 'yes', 'oui', 'endommagé', 'cassé', 'sale', 'mauvais', 'problème', 'tache'];
-            const isDeficiency = negativeWords.some(word => respText.includes(word));
+            const qText = (resp.question || '').toLowerCase();
+            
+            const questionHasProblemFocus = ['égratignure', 'trou', 'tache', 'dommage', 'scratch', 'hole', 'stain', 'damage', 'brise', 'cassé'].some(word => qText.includes(word));
+            
+            let isDeficiency = false;
+            if (questionHasProblemFocus) {
+                // If the question asks about a problem/defect, answering "yes" or "oui" is a deficiency
+                isDeficiency = ['oui', 'yes', 'visible'].some(word => respText.includes(word));
+            } else {
+                // Otherwise, standard negative words (or "no"/"non") are a deficiency
+                const negativeResponseWords = ['poor', 'damaged', 'broken', 'dirty', 'repair', 'replace', 'deficient', 'bad', 'missing', 'issue', 'fail', 'non', 'no', 'endommagé', 'cassé', 'sale', 'mauvais', 'problème', 'tache'];
+                isDeficiency = negativeResponseWords.some(word => respText.includes(word));
+            }
+            
             const respColor = isDeficiency ? colors.danger : colors.success;
 
             // Calculate height needed for question and notes
