@@ -784,5 +784,6 @@ module.exports = {
     toggleMoveInRequirement,
     getUnitPrepDashboard,
     updateUnitPrepStage,
+    overrideUnitPrepBlock,
     getUnitHistory
 };
