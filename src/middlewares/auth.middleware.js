@@ -1,6 +1,13 @@
 const jwt = require('jsonwebtoken');
+const { PrismaClient } = require('@prisma/client');
 
-const prisma = require('../config/prisma');
+// Centralized Masteko DB client - used ONLY for user auth lookup
+// All property data still uses the local property_2 DB via ../config/prisma
+const masterPrisma = new PrismaClient({
+    datasources: {
+        db: { url: process.env.MASTER_DATABASE_URL }
+    }
+});
 
 exports.authenticate = async (req, res, next) => {
     let token = '';
@@ -15,9 +22,9 @@ exports.authenticate = async (req, res, next) => {
     if (!token) return res.status(401).json({ message: 'No token provided' });
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        
-        // Forced Logout: Check if user is still active in the database
-        const user = await prisma.user.findUnique({
+
+        // Look up user from Masteko (centralized) DB — users are managed there
+        const user = await masterPrisma.user.findUnique({
             where: { id: decoded.id }
         });
 
@@ -36,7 +43,7 @@ exports.authenticate = async (req, res, next) => {
 
 exports.authorize = (role) => {
     return (req, res, next) => {
-        if (req.user.role !== role && req.user.role !== 'ADMIN') { // Admin can access all usually, but stick to role
+        if (req.user.role !== role && req.user.role !== 'ADMIN') {
             if (req.user.role !== role) {
                 return res.status(403).json({ message: 'Forbidden' });
             }

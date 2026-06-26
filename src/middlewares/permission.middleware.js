@@ -1,4 +1,12 @@
-const prisma = require('../config/prisma');
+const { PrismaClient } = require('@prisma/client');
+
+// Centralized Masteko DB client - used ONLY for permission lookup
+// All property data still uses the local property_2 DB via ../config/prisma
+const masterPrisma = new PrismaClient({
+    datasources: {
+        db: { url: process.env.MASTER_DATABASE_URL }
+    }
+});
 
 exports.checkPermission = (moduleName, action) => {
     return async (req, res, next) => {
@@ -21,8 +29,8 @@ exports.checkPermission = (moduleName, action) => {
                 return next();
             }
 
-            // Find the permission record for this user and specific module
-            const permission = await prisma.permission.findFirst({
+            // Find the permission record from Masteko (centralized) DB
+            const permission = await masterPrisma.permission.findFirst({
                 where: {
                     userId: parseInt(userId),
                     moduleName: moduleName
@@ -66,7 +74,8 @@ exports.checkAnyPermission = (moduleNames, action) => {
             if (!userId) return res.status(401).json({ message: 'Unauthorized' });
             if (userRole === 'ADMIN' || userRole !== 'COWORKER') return next();
 
-            const permissions = await prisma.permission.findMany({
+            // Find permissions from Masteko (centralized) DB
+            const permissions = await masterPrisma.permission.findMany({
                 where: {
                     userId: parseInt(userId),
                     moduleName: { in: moduleNames }
