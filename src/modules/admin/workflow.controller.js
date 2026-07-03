@@ -451,7 +451,7 @@ const getUnitPrepDashboard = async (req, res) => {
             include: {
                 property: true,
                 leases: {
-                    where: { status: 'Active' },
+                    where: { status: { in: ['Active', 'Scheduled'] } },
                     include: { tenant: true }
                 },
                 moveOuts: {

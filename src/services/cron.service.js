@@ -141,6 +141,18 @@ const initLeaseCron = () => {
             });
 
             console.log(`[Cron] Lease expiry check completed. Summary: Processed: ${result.processed}, Failed: ${result.failed}`);
+
+            // 5. Scheduled to Active Activation
+            console.log('[Cron] Running scheduled lease activation...');
+            const activatedLeases = await prisma.lease.updateMany({
+                where: {
+                    status: 'Scheduled',
+                    startDate: { lte: today }
+                },
+                data: { status: 'Active' }
+            });
+            console.log(`[Cron] Activated ${activatedLeases.count} scheduled leases.`);
+
         } catch (error) {
             console.error('[Cron] Fatal error in lease expiry cron job:', error);
         }

@@ -466,7 +466,7 @@ exports.updateLease = catchAsync(async (req, res, next) => {
         }
 
         return updatedLease;
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     // Phase 2: Automatic Shuttle Revocation
     // If the lease was just marked as Expired and no other active leases exist, remove from Shuttle
@@ -708,7 +708,7 @@ exports.activateLease = catchAsync(async (req, res, next) => {
         }, tx);
 
         return updatedLease;
-    });
+    }, { maxWait: 10000, timeout: 30000 });
 
     // 5. Automatic Invite for Activation - Defaults to FALSE (User must send manually)
     const sendNow = req.body.sendCredentials === true;
@@ -785,7 +785,7 @@ exports.createLease = catchAsync(async (req, res, next) => {
             include: {
                 bedroomsList: true,
                 leases: {
-                    where: { status: { in: ['Active', 'DRAFT'] } },
+                    where: { status: { in: ['Active', 'DRAFT', 'Scheduled'] } },
                     include: { tenant: { select: { type: true } } }
                 }
             }
@@ -817,10 +817,16 @@ exports.createLease = catchAsync(async (req, res, next) => {
                 throw new AppError(`Cannot create full unit lease: ${occupiedWithActiveLease.length} bedroom(s) are already occupied with active leases. Please ensure all bedrooms are vacant.`, 400);
             }
 
-            // Check for EXISTING Active lease for this unit
-            const activeLease = unit.leases.find(l => l.status === 'Active');
-            if (activeLease) {
-                throw new AppError('Cannot create full unit lease: This unit already has an ACTIVE lease.', 400);
+            // Check for EXISTING Active or Scheduled lease for this unit that overlaps
+            const incomingStart = new Date(startDate);
+            const incomingEnd = new Date(endDate);
+            const blockingLeases = unit.leases.filter(l => l.status === 'Active' || l.status === 'Scheduled');
+            for (const l of blockingLeases) {
+                const existingStart = new Date(l.startDate);
+                const existingEnd = new Date(l.endDate);
+                if (incomingStart <= existingEnd && incomingEnd >= existingStart) {
+                    throw new AppError(`Cannot create full unit lease: Dates overlap with an existing ${l.status} lease.`, 400);
+                }
             }
 
             // Check for DRAFT leases for DIFFERENT tenants
@@ -832,14 +838,22 @@ exports.createLease = catchAsync(async (req, res, next) => {
 
         // VALIDATION FOR BEDROOM LEASE
         if (isBedroomLease) {
-            // Check for EXISTING Active lease in FULL_UNIT mode (blocking only if NOT a company lease)
-            const activeFullLease = unit.leases.find(l =>
-                l.status === 'Active' &&
+            // Check for EXISTING Active or Scheduled lease in FULL_UNIT mode (blocking only if NOT a company lease)
+            const activeOrScheduledFullLeases = unit.leases.filter(l =>
+                (l.status === 'Active' || l.status === 'Scheduled') &&
                 l.leaseType === 'FULL_UNIT' &&
                 l.tenant.type !== 'COMPANY'
             );
-            if (activeFullLease) {
-                throw new AppError('Cannot lease bedroom: This unit already has an ACTIVE individual full unit lease.', 400);
+            
+            const incomingStart = new Date(startDate);
+            const incomingEnd = new Date(endDate);
+
+            for (const l of activeOrScheduledFullLeases) {
+                const existingStart = new Date(l.startDate);
+                const existingEnd = new Date(l.endDate);
+                if (incomingStart <= existingEnd && incomingEnd >= existingStart) {
+                    throw new AppError(`Cannot lease bedroom: Dates overlap with an existing ${l.status} full unit lease.`, 400);
+                }
             }
 
             // Check for DRAFT full unit leases for DIFFERENT tenants
@@ -893,15 +907,24 @@ exports.createLease = catchAsync(async (req, res, next) => {
         const timeZone = process.env.TZ || 'Asia/Kolkata';
         const today = new Date(new Date().toLocaleString("en-US", { timeZone }));
         today.setHours(0, 0, 0, 0);
+        const leaseStartRaw = new Date(startDate);
+        const leaseStart = new Date(leaseStartRaw.getUTCFullYear(), leaseStartRaw.getUTCMonth(), leaseStartRaw.getUTCDate());
         const leaseEndRaw = new Date(endDate);
         const leaseEnd = new Date(leaseEndRaw.getUTCFullYear(), leaseEndRaw.getUTCMonth(), leaseEndRaw.getUTCDate());
+
+        let newStatus = 'Active';
+        if (leaseEnd < today) {
+            newStatus = 'Expired';
+        } else if (leaseStart > today) {
+            newStatus = 'Scheduled';
+        }
 
         const leaseData = {
             startDate: workflowService.normalizeToNoon(startDate),
             endDate: workflowService.normalizeToNoon(endDate), 
             monthlyRent: parseFloat(monthlyRent) || 0,
             securityDeposit: parseFloat(securityDeposit) || 0,
-            status: leaseEnd < today ? 'Expired' : 'Active',
+            status: newStatus,
             leaseType: isBedroomLease ? 'BEDROOM' : 'FULL_UNIT',
             bedroomId: bId
         };
@@ -1131,7 +1154,7 @@ exports.createLease = catchAsync(async (req, res, next) => {
             });
         }
         return { lease };
-    }).catch(err => {
+    }, { maxWait: 10000, timeout: 30000 }).catch(err => {
         require('fs').appendFileSync('lease_error.log', `[${new Date().toISOString()}] Lease Creation Transaction Error: ${err.message}\n${err.stack}\n\n`);
         throw err;
     });
