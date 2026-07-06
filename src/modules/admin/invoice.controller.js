@@ -1,5 +1,6 @@
 const prisma = require('../../config/prisma');
 const { generateInvoicePDF } = require('../../utils/pdf.utils');
+const { generateInvoiceNo } = require('../../utils/invoice.utils');
 
 // GET /api/admin/invoices/:id/download
 exports.downloadInvoicePDF = async (req, res) => {
@@ -180,39 +181,52 @@ exports.createInvoice = async (req, res) => {
         const totalAmount = finalRent + feesAmt;
 
         // Generate Invoice Number
-        const count = await prisma.invoice.count();
         const prefix = req.body.category === 'SECURITY_DEPOSIT' ? 'INV-DEP' : 'INV-MAN';
-        const invoiceNo = `${prefix}-${String(count + 1).padStart(5, '0')}`;
-
-        const newInvoice = await prisma.invoice.create({
-            data: {
-                invoiceNo,
-                tenantId: billableTenantId,
-                unitId: parseInt(unitId),
-                leaseId: lease.id,
-                leaseType: lease.unit.rentalMode,
-                month,
-                rent: finalRent,
-                serviceFees: feesAmt,
-                amount: totalAmount,
-                paidAmount: 0,
-                balanceDue: totalAmount,
-                status: req.body.status || 'draft',
-                category: req.body.category || 'RENT',
-                description: req.body.description || null,
-                dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-                items: Array.isArray(items) && items.length > 0 ? {
-                    create: items.map(item => ({
-                        description: item.description,
-                        amount: parseFloat(item.amount || 0)
-                    }))
-                } : undefined
-            },
-            include: {
-                tenant: true,
-                unit: true
+        let attempts = 0;
+        let newInvoice;
+        while (attempts < 5) {
+            try {
+                const invoiceNo = await generateInvoiceNo(prisma.invoice, prefix);
+                newInvoice = await prisma.invoice.create({
+                    data: {
+                        invoiceNo,
+                        tenantId: billableTenantId,
+                        unitId: parseInt(unitId),
+                        leaseId: lease.id,
+                        leaseType: lease.unit.rentalMode,
+                        month,
+                        rent: finalRent,
+                        serviceFees: feesAmt,
+                        amount: totalAmount,
+                        paidAmount: 0,
+                        balanceDue: totalAmount,
+                        status: req.body.status || 'draft',
+                        category: req.body.category || 'RENT',
+                        description: req.body.description || null,
+                        dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+                        items: Array.isArray(items) && items.length > 0 ? {
+                            create: items.map(item => ({
+                                description: item.description,
+                                amount: parseFloat(item.amount || 0)
+                            }))
+                        } : undefined
+                    },
+                    include: {
+                        tenant: true,
+                        unit: true
+                    }
+                });
+                break;
+            } catch (error) {
+                if (error.code === 'P2002' && error.meta?.target?.includes('invoiceNo')) {
+                    attempts++;
+                    if (attempts >= 5) throw error;
+                    await new Promise(resolve => setTimeout(resolve, Math.random() * 100));
+                } else {
+                    throw error;
+                }
             }
-        });
+        }
 
         res.status(201).json(newInvoice);
 
@@ -353,8 +367,6 @@ exports.runBatchInvoicing = async (req, res) => {
                 }
 
                 // 3. Generate Invoice
-                const count = await prisma.invoice.count();
-                const invoiceNo = `INV-BATCH-${String(count + 1).padStart(5, '0')}`;
                 const dueDate = new Date(today.getFullYear(), today.getMonth(), 10); // 10th of month
 
                 // Determine who to bill: If tenant is a RESIDENT, bill their Parent
@@ -371,23 +383,39 @@ exports.runBatchInvoicing = async (req, res) => {
                     continue;
                 }
 
-                await prisma.invoice.create({
-                    data: {
-                        invoiceNo,
-                        tenantId: billableTenantId,
-                        unitId: lease.unitId,
-                        leaseId: lease.id,
-                        leaseType: lease.unit.rentalMode,
-                        month: currentMonth,
-                        rent: rentAmount,
-                        serviceFees: 0,
-                        amount: rentAmount,
-                        paidAmount: 0,
-                        balanceDue: rentAmount,
-                        status: 'sent',
-                        dueDate: dueDate
+                let attempts = 0;
+                let invoiceNo;
+                while (attempts < 5) {
+                    try {
+                        invoiceNo = await generateInvoiceNo(prisma.invoice, 'INV-BATCH');
+                        await prisma.invoice.create({
+                            data: {
+                                invoiceNo,
+                                tenantId: billableTenantId,
+                                unitId: lease.unitId,
+                                leaseId: lease.id,
+                                leaseType: lease.unit.rentalMode,
+                                month: currentMonth,
+                                rent: rentAmount,
+                                serviceFees: 0,
+                                amount: rentAmount,
+                                paidAmount: 0,
+                                balanceDue: rentAmount,
+                                status: 'sent',
+                                dueDate: dueDate
+                            }
+                        });
+                        break;
+                    } catch (error) {
+                        if (error.code === 'P2002' && error.meta?.target?.includes('invoiceNo')) {
+                            attempts++;
+                            if (attempts >= 5) throw error;
+                            await new Promise(resolve => setTimeout(resolve, Math.random() * 100));
+                        } else {
+                            throw error;
+                        }
                     }
-                });
+                }
 
                 await prisma.rentRunLog.create({
                     data: {
