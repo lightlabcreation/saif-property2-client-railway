@@ -223,6 +223,7 @@ const getMoveInDashboard = async (req, res) => {
             const insuranceProvided = !missingItems.includes('Insurance') || dbInsurance;
             
             const hasBlockingTickets = (mi.unit?.Ticket?.length || 0) > 0;
+            const inspection = allInspections.find(ins => ins.unitId === mi.unitId && ins.leaseId === mi.leaseId);
             let currentStatus = mi.status;
 
             if (mi.status === 'OCCUPIED') {
@@ -257,7 +258,6 @@ const getMoveInDashboard = async (req, res) => {
                 }
             }
 
-            const inspection = allInspections.find(ins => ins.unitId === mi.unitId && ins.leaseId === mi.leaseId);
             const hasDraftInspection = inspection && inspection.status === 'DRAFT';
             const hasCompletedInspection = inspection && inspection.status === 'COMPLETED';
 
