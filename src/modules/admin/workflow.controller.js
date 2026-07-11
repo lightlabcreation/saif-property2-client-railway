@@ -225,6 +225,22 @@ const getMoveInDashboard = async (req, res) => {
             const hasBlockingTickets = (mi.unit?.Ticket?.length || 0) > 0;
             let currentStatus = mi.status;
 
+            if (mi.status === 'OCCUPIED') {
+                return {
+                    ...mi,
+                    status: 'OCCUPIED',
+                    daysRemaining: diffDays,
+                    inspectionId: inspection?.id || null,
+                    urgency: diffDays < 0 ? 'OVERDUE' : diffDays <= 7 ? 'HIGH' : 'NORMAL',
+                    requirements: {
+                        rent: rentPaid,
+                        deposit: depositStatus,
+                        insurance: insuranceProvided,
+                        repairs: !hasBlockingTickets
+                    }
+                };
+            }
+
             const isLeaseSigned = mi.leaseId != null && mi.lease?.status !== 'Pending';
 
             // Transition: Blocked -> Missing Requirements
