@@ -596,7 +596,9 @@ const completeMoveIn = async (moveInId, userId) => {
         });
 
         if (!moveIn) throw new Error('Move-In record not found');
-        if (moveIn.status === 'OCCUPIED') throw new Error('Move-In already completed.');
+        if (moveIn.status === 'OCCUPIED') {
+            return moveIn;
+        }
 
         // MODULE 4, RULE 9: FINAL MOVE-IN CONDITION
         
