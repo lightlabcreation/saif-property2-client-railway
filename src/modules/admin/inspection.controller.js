@@ -239,6 +239,66 @@ const submitInspection = async (req, res) => {
     }
 };
 
+const enrichInspectionTenant = async (inspection) => {
+    if (inspection?.lease?.tenant?.name) {
+        return inspection;
+    }
+    try {
+        if (inspection.leaseId) {
+            const lease = await prisma.lease.findUnique({
+                where: { id: inspection.leaseId },
+                include: { tenant: true }
+            });
+            if (lease?.tenant?.name) {
+                inspection.lease = {
+                    ...inspection.lease,
+                    tenant: lease.tenant
+                };
+                return inspection;
+            }
+        }
+        let linkedLeaseId = inspection.leaseId;
+        if (!linkedLeaseId) {
+            const moveOut = await prisma.moveOut.findFirst({
+                where: {
+                    OR: [
+                        { visualInspectionId: inspection.id },
+                        { finalInspectionId: inspection.id }
+                    ]
+                },
+                include: {
+                    lease: { include: { tenant: true } }
+                }
+            });
+            if (moveOut?.lease?.tenant?.name) {
+                inspection.lease = moveOut.lease;
+                return inspection;
+            }
+        }
+        const lastMoveOutHistory = await prisma.unitHistory.findFirst({
+            where: {
+                unitId: inspection.unitId,
+                action: 'MOVE_OUT_INITIATED'
+            },
+            include: { user: true },
+            orderBy: { timestamp: 'desc' }
+        });
+        if (lastMoveOutHistory?.user?.name) {
+            inspection.lease = {
+                ...inspection.lease,
+                tenant: {
+                    name: lastMoveOutHistory.user.name,
+                    phone: lastMoveOutHistory.user.phone
+                }
+            };
+            return inspection;
+        }
+    } catch (e) {
+        console.error('Error during tenant lookup fallback:', e);
+    }
+    return inspection;
+};
+
 const getAllInspections = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -261,9 +321,11 @@ const getAllInspections = async (req, res) => {
             prisma.inspection.count()
         ]);
 
+        const enriched = await Promise.all(inspections.map(enrichInspectionTenant));
+
         res.json({ 
             success: true, 
-            data: inspections,
+            data: enriched,
             pagination: {
                 total,
                 page,
@@ -480,7 +542,8 @@ const downloadInspectionPDF = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Inspection not found' });
         }
 
-        await generateInspectionPDF(inspection, res);
+        const enriched = await enrichInspectionTenant(inspection);
+        await generateInspectionPDF(enriched, res);
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
@@ -526,7 +589,8 @@ const getInspectionDetails = async (req, res) => {
             }
         }
 
-        res.json({ success: true, data: inspection });
+        const enriched = await enrichInspectionTenant(inspection);
+        res.json({ success: true, data: enriched });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

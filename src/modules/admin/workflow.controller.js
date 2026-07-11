@@ -504,7 +504,8 @@ const getUnitPrepDashboard = async (req, res) => {
             inRepair: dashboardData.filter(d => d.hasRequiredTickets).length,
             cleaningTotal: dashboardData.filter(d => d.current_stage === 'READY_FOR_CLEANING' || d.current_stage === 'CLEANING_IN_PROGRESS').length,
             readyForCompletion: dashboardData.filter(d => d.current_stage === 'CLEANING_COMPLETED').length,
-            unitsReady: dashboardData.filter(d => d.current_stage === 'UNIT_READY').length
+            // Count all units ever marked as Unit Ready (unit_ready_completed=true) for the stat card
+            unitsReady: await prisma.unit.count({ where: { unit_ready_completed: true } })
         };
 
         res.json({ success: true, data: dashboardData, stats });
@@ -546,10 +547,14 @@ const updateUnitPrepStage = async (req, res) => {
         // Final State Logic (3.9)
         const updateData = { current_stage: nextStage };
         if (nextStage === 'UNIT_READY') {
+            updateData.current_stage = 'UNIT_READY';
             updateData.availability_status = 'Available';
             updateData.ready_for_leasing = true;
+            updateData.unit_ready_completed = true;
+            updateData.unit_ready_completed_date = new Date();
             updateData.status_note = 'Ready for Move-In';
-            // We keep current_stage as UNIT_READY or set to null to remove from dashboard
+        } else if (nextStage === 'COMPLETE_PREP') {
+            updateData.current_stage = null; // Clear from prep dashboard
         }
 
         const updatedUnit = await prisma.unit.update({

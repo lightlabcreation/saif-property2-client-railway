@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const prisma = require('../config/prisma');
+const { generateInvoiceNo } = require('../utils/invoice.utils');
 
 /**
  * Monthly Invoice Generation Cron Job
@@ -77,27 +78,41 @@ const initMonthlyInvoiceCron = () => {
                     }
 
                     // 3. Generate Invoice
-                    const count = await prisma.invoice.count();
-                    const invoiceNo = `INV-AUTO-${String(count + 1).padStart(5, '0')}`;
                     const dueDate = new Date(today.getFullYear(), today.getMonth(), 5);
 
-                    await prisma.invoice.create({
-                        data: {
-                            invoiceNo,
-                            tenantId: lease.tenantId,
-                            unitId: lease.unitId,
-                            leaseId: lease.id,
-                            leaseType: lease.unit.rentalMode,
-                            month: currentMonth,
-                            rent: rentAmt,
-                            serviceFees: 0,
-                            amount: rentAmt,
-                            paidAmount: 0,
-                            balanceDue: rentAmt,
-                            status: 'sent',
-                            dueDate: dueDate
+                    let attempts = 0;
+                    let invoiceNo;
+                    while (attempts < 5) {
+                        try {
+                            invoiceNo = await generateInvoiceNo(prisma.invoice, 'INV-AUTO');
+                            await prisma.invoice.create({
+                                data: {
+                                    invoiceNo,
+                                    tenantId: lease.tenantId,
+                                    unitId: lease.unitId,
+                                    leaseId: lease.id,
+                                    leaseType: lease.unit.rentalMode,
+                                    month: currentMonth,
+                                    rent: rentAmt,
+                                    serviceFees: 0,
+                                    amount: rentAmt,
+                                    paidAmount: 0,
+                                    balanceDue: rentAmt,
+                                    status: 'sent',
+                                    dueDate: dueDate
+                                }
+                            });
+                            break;
+                        } catch (error) {
+                            if (error.code === 'P2002' && error.meta?.target?.includes('invoiceNo')) {
+                                attempts++;
+                                if (attempts >= 5) throw error;
+                                await new Promise(resolve => setTimeout(resolve, Math.random() * 100));
+                            } else {
+                                throw error;
+                            }
                         }
-                    });
+                    }
 
                     await prisma.rentRunLog.create({
                         data: {
