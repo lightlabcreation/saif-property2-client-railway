@@ -300,8 +300,48 @@ exports.updateRefund = async (req, res) => {
             });
 
             // Process Allocations if status is moving TO Completed
-            if (status === 'Completed' && current.status !== 'Completed' && req.body.allocations && Array.isArray(req.body.allocations)) {
-                for (const allocation of req.body.allocations) {
+            if (status === 'Completed' && current.status !== 'Completed') {
+                let finalAllocations = [];
+                if (req.body.allocations && Array.isArray(req.body.allocations) && req.body.allocations.length > 0) {
+                    finalAllocations = req.body.allocations;
+                } else if (current.type === 'Security Deposit' && current.unitId) {
+                    const tenantId = parseInt(current.tenantId);
+                    const unitId = parseInt(current.unitId);
+
+                    const depositInvoices = await tx.invoice.findMany({
+                        where: {
+                            tenantId,
+                            unitId,
+                            OR: [{ category: 'SECURITY_DEPOSIT' }, { description: { contains: 'Security Deposit' } }],
+                            paidAmount: { gt: 0 }
+                        }
+                    });
+                    const totalDepositPaid = depositInvoices.reduce((sum, inv) => sum + parseFloat(inv.paidAmount || 0), 0);
+                    
+                    const existingRefunds = await tx.refundAdjustment.findMany({
+                        where: { tenantId, unitId, status: { in: ['Completed', 'Issued'] } }
+                    });
+                    const totalRefundedAlready = existingRefunds.reduce((sum, r) => sum + Math.abs(parseFloat(r.amount || 0)), 0);
+                    const availableDeposit = Math.max(0, totalDepositPaid - totalRefundedAlready);
+                    
+                    const requestedAmount = parseFloat(amount || current.amount) || 0;
+                    
+                    const unpaidRent = await tx.invoice.findMany({
+                        where: { tenantId, unitId, category: 'RENT', status: { not: 'paid' } },
+                        orderBy: { dueDate: 'asc' }
+                    });
+                    
+                    let tempPool = availableDeposit - requestedAmount;
+
+                    for (const inv of unpaidRent) {
+                        if (tempPool <= 0) break;
+                        const ded = Math.min(tempPool, parseFloat(inv.balanceDue));
+                        finalAllocations.push({ invoiceId: inv.id, amount: ded });
+                        tempPool -= ded;
+                    }
+                }
+
+                for (const allocation of finalAllocations) {
                     const invoice = await tx.invoice.findUnique({ where: { id: allocation.invoiceId } });
                     if (!invoice) continue;
 
