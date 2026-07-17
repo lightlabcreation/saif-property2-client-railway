@@ -53,7 +53,7 @@ async function fixRA00040() {
             }
 
             const invoice = unpaidRent[0];
-            const allocAmount = parseFloat(invoice.balanceDue);
+            const allocAmount = 1450; // Set specifically to 1450 instead of the full invoice balance
             
             console.log(`Found unpaid rent invoice ${invoice.invoiceNo} for $${allocAmount}. Applying deposit...`);
 

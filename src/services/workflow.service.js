@@ -291,6 +291,30 @@ const overrideUnitPrepBlock = async (unitId, userId) => {
             }
         });
 
+        // Make open blocking tickets non-blocking
+        await tx.ticket.updateMany({
+            where: {
+                unitId: unitId,
+                status: 'Open',
+                isRequired: true
+            },
+            data: {
+                isRequired: false
+            }
+        });
+
+        // Make corresponding open tasks non-blocking
+        await tx.unitPrepTask.updateMany({
+            where: {
+                unitId: unitId,
+                status: { not: 'COMPLETED' },
+                isRequired: true
+            },
+            data: {
+                isRequired: false
+            }
+        });
+
         // Create history record for audit
         await tx.unitHistory.create({
             data: {
