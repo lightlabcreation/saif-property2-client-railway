@@ -44,7 +44,9 @@ exports.getAllTickets = async (req, res) => {
                 status: t.status,
                 desc: t.description,
                 createdAt: t.createdAt.toLocaleString(),
+                createdAtRaw: t.createdAt.toISOString(),
                 date: t.createdAt.toISOString().split('T')[0],
+                resolvedAt: t.resolvedAt ? t.resolvedAt.toISOString() : null,
                 attachments: (() => {
                     try {
                         return t.attachmentUrls ? JSON.parse(t.attachmentUrls) : [];
@@ -86,7 +88,10 @@ exports.updateTicketStatus = async (req, res) => {
 
         const updated = await prisma.ticket.update({
             where: { id: ticketId },
-            data: { status }
+            data: { 
+                status,
+                resolvedAt: status === 'Resolved' ? new Date() : null
+            }
         });
 
         // Trigger Auto-Progression for Unit Prep Flow if applicable
@@ -178,18 +183,24 @@ exports.updateTicket = async (req, res) => {
         const { id } = req.params;
         const { subject, description, priority, category, status, propertyId, unitId, tenantId } = req.body;
 
+        const updateData = {
+            subject,
+            description,
+            priority,
+            category,
+            status,
+            propertyId: propertyId ? parseInt(propertyId) : undefined,
+            unitId: unitId ? parseInt(unitId) : undefined,
+            userId: tenantId ? parseInt(tenantId) : undefined
+        };
+
+        if (status !== undefined) {
+            updateData.resolvedAt = status === 'Resolved' ? new Date() : null;
+        }
+
         const updated = await prisma.ticket.update({
             where: { id: parseInt(id) },
-            data: {
-                subject,
-                description,
-                priority,
-                category,
-                status,
-                propertyId: propertyId ? parseInt(propertyId) : undefined,
-                unitId: unitId ? parseInt(unitId) : undefined,
-                userId: tenantId ? parseInt(tenantId) : undefined
-            }
+            data: updateData
         });
 
         // Trigger Auto-Progression for Unit Prep Flow if applicable

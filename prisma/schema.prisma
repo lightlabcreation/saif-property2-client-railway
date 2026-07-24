@@ -419,6 +419,7 @@ model Ticket {
   attachmentUrls String?     @db.Text
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+  resolvedAt     DateTime?
   propertyId     Int?
   unitId         Int?
   category       String?
