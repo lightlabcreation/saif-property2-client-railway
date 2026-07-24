@@ -800,10 +800,27 @@ const completeMoveOutFlow = async (moveOutId, userId) => {
             }
         });
 
+        if (moveOut.bedroomId) {
+            await tx.bedroom.update({
+                where: { id: moveOut.bedroomId },
+                data: { status: 'Vacant' }
+            });
+        }
+
         if (moveOut.leaseId) {
+            const today = new Date();
+            const targetDate = moveOut.targetDate ? new Date(moveOut.targetDate) : null;
+            
+            const isNaturalExpiry = targetDate && (
+                new Date(today.getFullYear(), today.getMonth(), today.getDate()) >= 
+                new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate())
+            );
+
+            const finalStatus = isNaturalExpiry ? 'Expired' : 'TERMINATED';
+
             await tx.lease.update({
                 where: { id: moveOut.leaseId },
-                data: { status: 'TERMINATED', endDate: new Date() }
+                data: { status: finalStatus, endDate: new Date() }
             });
             // Free up the tenant/residents from this unit
             await tx.user.updateMany({
