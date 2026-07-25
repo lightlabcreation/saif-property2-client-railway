@@ -321,12 +321,18 @@ exports.exportTickets = async (req, res) => {
 
             const resolved = t.resolvedAt ? t.resolvedAt.toISOString().replace('T', ' ').substring(0, 19) : 'N/A';
             const status = t.status || 'Open';
-            const categoryType = [t.category, t.type].filter(Boolean).join(' / ') || 'N/A';
+            
+            // Clean Category / Type formatting
+            const rawCat = t.category || t.type || 'N/A';
+            const categoryType = rawCat.charAt(0).toUpperCase() + rawCat.slice(1).toLowerCase();
+            
             const priority = t.priority || 'Low';
             const building = t.property?.name || t.unit?.property?.name || 'N/A';
             const unitNumber = t.unit?.unitNumber || 'N/A';
             const tenantName = t.user?.name || 'N/A';
-            const assignee = t.inspection?.inspector?.name || 'Admin / Property Manager';
+            
+            // Fix: Fallback to 'Unassigned'
+            const assignee = t.inspection?.inspector?.name || 'Unassigned';
             
             let timeToAssignment = 'N/A';
             if (isAcknowledged && t.updatedAt && t.createdAt) {
@@ -368,7 +374,7 @@ exports.exportTickets = async (req, res) => {
             };
         });
 
-        // Build a highly professional Excel XML/HTML structure
+        // Build professional Excel XML/HTML structure with auto-row height (removed tr height attributes)
         let xlsContent = `
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
 <head>
@@ -434,7 +440,7 @@ exports.exportTickets = async (req, res) => {
     <col width="240"> <!-- Completion Notes -->
   </colgroup>
   <thead>
-    <tr height="25">
+    <tr>
       <th>Ticket Number</th>
       <th>Date and Time Submitted</th>
       <th>Date and Time Acknowledged</th>
@@ -459,7 +465,7 @@ exports.exportTickets = async (req, res) => {
 
         rows.forEach(r => {
             xlsContent += `
-    <tr height="20">
+    <tr>
       <td class="text-cell" style="font-weight: bold; color: #4f46e5;">${r.ticketNum}</td>
       <td class="date-cell">${r.submitted}</td>
       <td class="date-cell">${r.acknowledged}</td>
