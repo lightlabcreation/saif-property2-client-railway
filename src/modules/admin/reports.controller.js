@@ -367,7 +367,6 @@ exports.getRentRoll = async (req, res) => {
                             const typeRate = unitTypeRates.find(r => r.typeName.toLowerCase() === (u.unitType || '').toLowerCase());
                             const bPotentialRent = typeRate ? parseFloat(typeRate.singleBedroomRate) : parseFloat(bedroom.rentAmount || 0);
                             
-                            vacantBedrooms++;
                             totalPotentialMonthlyRent += bPotentialRent;
                             totalVacancyLoss += bPotentialRent;
                             totalUnitVacancyLoss += bPotentialRent;
@@ -505,8 +504,6 @@ exports.getRentRoll = async (req, res) => {
                         });
 
                         if (unitIsFullyVacant) vacantUnits++;
-                        else if (unitIsFullyOccupied) occupiedUnits++;
-                        else occupiedUnits++; // Partially occupied is counted as occupied unit broadly
                     }
                 }
             }
