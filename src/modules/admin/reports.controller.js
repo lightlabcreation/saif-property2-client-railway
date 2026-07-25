@@ -356,121 +356,158 @@ exports.getRentRoll = async (req, res) => {
                     totalPotentialMonthlyRent += unitPotentialRent;
                     totalVacancyLoss += unitPotentialRent;
                 } else {
-                    u.bedroomsList.forEach(bedroom => {
-                        const typeRate = unitTypeRates.find(r => r.typeName.toLowerCase() === (u.unitType || '').toLowerCase());
-                        const bPotentialRent = typeRate ? parseFloat(typeRate.singleBedroomRate) : parseFloat(bedroom.rentAmount || 0);
+                    const isFullyVacant = u.bedroomsList.every(bedroom => {
                         const bLease = bedroom.leases[0] || u.leases.find(l => l.bedroomId === bedroom.id);
-                        
-                        // Calculate balances for this bedroom/tenant
-                        let bRentBalance = 0;
-                        let bDepositBalance = 0;
-
-                        if (bLease && bLease.tenantId) {
-                            // Filter invoices from ALL unpaid for this specific tenant
-                            allUnpaidInvoices.filter(inv => inv.tenantId === bLease.tenantId).forEach(inv => {
-                                const isDeposit = inv.category === 'SECURITY_DEPOSIT' || 
-                                                (inv.category === 'SERVICE' && inv.description?.includes('Security Deposit'));
-                                if (isDeposit) bDepositBalance += parseFloat(inv.balanceDue);
-                                else if (inv.category === 'RENT') bRentBalance += parseFloat(inv.balanceDue);
-                            });
-                        }
-
-                        if (bLease || bedroom.status === 'Occupied' || bedroom.reserved_flag) {
-                            occupiedBedrooms++;
-                            unitIsFullyVacant = false;
-
-                            if (bLease) {
-                                const rent = bLease.monthlyRent ? parseFloat(bLease.monthlyRent.toString()) : 0;
-                                totalActualMonthlyRent += rent;
-                                totalPotentialMonthlyRent += rent;
-
-                                rentRollArray.push({
-                                    id: `bed-${bedroom.id}`,
-                                    parentUnitId: u.id,
-                                    buildingName: u.property?.name || 'N/A',
-                                    leaseType: 'Bedroom Lease',
-                                    unitNumber: u.unitNumber || u.name,
-                                    bedroomNumber: bedroom.bedroomNumber,
-                                    tenantName: bLease.tenant ? (bLease.tenant.companyName || `${bLease.tenant.firstName || ''} ${bLease.tenant.lastName || ''}`.trim() || bLease.tenant.name || '-') : '-',
-                                    startDate: bLease.startDate,
-                                    endDate: bLease.endDate,
-                                    monthlyRent: rent,
-                                    potentialRent: rent,
-                                    vacancyLoss: 0,
-                                    outstandingRent: bRentBalance,
-                                    outstandingDeposit: bDepositBalance,
-                                    status: 'Occupied'
-                                });
-                            } else if (bedroom.reserved_flag) {
-                                totalPotentialMonthlyRent += bPotentialRent;
-                                const prospectName = bedroom.reserved_by_user ? (bedroom.reserved_by_user.name || `${bedroom.reserved_by_user.firstName || ''} ${bedroom.reserved_by_user.lastName || ''}`.trim()) : (u.status_note || 'Reserved');
-                                rentRollArray.push({
-                                    id: `bed-${bedroom.id}`,
-                                    parentUnitId: u.id,
-                                    buildingName: u.property?.name || 'N/A',
-                                    leaseType: 'Bedroom Lease',
-                                    unitNumber: u.unitNumber || u.name,
-                                    bedroomNumber: bedroom.bedroomNumber,
-                                    tenantName: prospectName,
-                                    startDate: null,
-                                    endDate: null,
-                                    monthlyRent: bPotentialRent,
-                                    potentialRent: bPotentialRent,
-                                    vacancyLoss: 0,
-                                    outstandingRent: 0,
-                                    outstandingDeposit: 0,
-                                    status: 'Reserved'
-                                });
-                            } else {
-                                // Occupied but no lease found (fallback)
-                                totalPotentialMonthlyRent += bPotentialRent;
-                                rentRollArray.push({
-                                    id: `bed-${bedroom.id}`,
-                                    parentUnitId: u.id,
-                                    buildingName: u.property?.name || 'N/A',
-                                    leaseType: 'Bedroom Lease',
-                                    unitNumber: u.unitNumber || u.name,
-                                    bedroomNumber: bedroom.bedroomNumber,
-                                    tenantName: 'Unknown (Occupied)',
-                                    startDate: null,
-                                    endDate: null,
-                                    monthlyRent: 0,
-                                    potentialRent: bPotentialRent,
-                                    vacancyLoss: 0,
-                                    outstandingRent: 0,
-                                    outstandingDeposit: 0,
-                                    status: 'Occupied'
-                                });
-                            }
-                        } else {
-                            vacantBedrooms++;
-                            unitIsFullyOccupied = false;
-                            totalPotentialMonthlyRent += bPotentialRent;
-                            totalVacancyLoss += bPotentialRent;
-
-                            rentRollArray.push({
-                                id: `bed-${bedroom.id}`,
-                                parentUnitId: u.id,
-                                buildingName: u.property?.name || 'N/A',
-                                leaseType: 'Bedroom Lease',
-                                unitNumber: u.unitNumber || u.name,
-                                bedroomNumber: bedroom.bedroomNumber,
-                                tenantName: '-',
-                                startDate: null,
-                                endDate: null,
-                                monthlyRent: bPotentialRent, // Shows Potential Rent when vacant
-                                potentialRent: bPotentialRent,
-                                vacancyLoss: bPotentialRent,
-                                outstandingRent: 0,
-                                outstandingDeposit: 0,
-                                status: 'Vacant'
-                            });
-                        }
+                        return !(bLease || bedroom.status === 'Occupied' || bedroom.reserved_flag);
                     });
 
-                    if (unitIsFullyVacant) vacantUnits++;
-                    else if (unitIsFullyOccupied) occupiedUnits++;
-                    else occupiedUnits++; // Partially occupied is counted as occupied unit broadly
+                    if (isFullyVacant) {
+                        let totalUnitVacancyLoss = 0;
+                        u.bedroomsList.forEach(bedroom => {
+                            const typeRate = unitTypeRates.find(r => r.typeName.toLowerCase() === (u.unitType || '').toLowerCase());
+                            const bPotentialRent = typeRate ? parseFloat(typeRate.singleBedroomRate) : parseFloat(bedroom.rentAmount || 0);
+                            
+                            vacantBedrooms++;
+                            totalPotentialMonthlyRent += bPotentialRent;
+                            totalVacancyLoss += bPotentialRent;
+                            totalUnitVacancyLoss += bPotentialRent;
+                        });
+
+                        rentRollArray.push({
+                            id: `unit-${u.id}`,
+                            buildingName: u.property?.name || 'N/A',
+                            leaseType: 'Full Unit',
+                            unitNumber: u.unitNumber || u.name,
+                            bedroomNumber: '-',
+                            tenantName: '-',
+                            startDate: null,
+                            endDate: null,
+                            monthlyRent: totalUnitVacancyLoss,
+                            potentialRent: totalUnitVacancyLoss,
+                            vacancyLoss: totalUnitVacancyLoss,
+                            outstandingRent: 0,
+                            outstandingDeposit: 0,
+                            status: 'Vacant'
+                        });
+
+                        vacantUnits++;
+                    } else {
+                        u.bedroomsList.forEach(bedroom => {
+                            const typeRate = unitTypeRates.find(r => r.typeName.toLowerCase() === (u.unitType || '').toLowerCase());
+                            const bPotentialRent = typeRate ? parseFloat(typeRate.singleBedroomRate) : parseFloat(bedroom.rentAmount || 0);
+                            const bLease = bedroom.leases[0] || u.leases.find(l => l.bedroomId === bedroom.id);
+                            
+                            // Calculate balances for this bedroom/tenant
+                            let bRentBalance = 0;
+                            let bDepositBalance = 0;
+
+                            if (bLease && bLease.tenantId) {
+                                // Filter invoices from ALL unpaid for this specific tenant
+                                allUnpaidInvoices.filter(inv => inv.tenantId === bLease.tenantId).forEach(inv => {
+                                    const isDeposit = inv.category === 'SECURITY_DEPOSIT' || 
+                                                    (inv.category === 'SERVICE' && inv.description?.includes('Security Deposit'));
+                                    if (isDeposit) bDepositBalance += parseFloat(inv.balanceDue);
+                                    else if (inv.category === 'RENT') bRentBalance += parseFloat(inv.balanceDue);
+                                });
+                            }
+
+                            if (bLease || bedroom.status === 'Occupied' || bedroom.reserved_flag) {
+                                occupiedBedrooms++;
+                                unitIsFullyVacant = false;
+
+                                if (bLease) {
+                                    const rent = bLease.monthlyRent ? parseFloat(bLease.monthlyRent.toString()) : 0;
+                                    totalActualMonthlyRent += rent;
+                                    totalPotentialMonthlyRent += rent;
+
+                                    rentRollArray.push({
+                                        id: `bed-${bedroom.id}`,
+                                        parentUnitId: u.id,
+                                        buildingName: u.property?.name || 'N/A',
+                                        leaseType: 'Bedroom Lease',
+                                        unitNumber: u.unitNumber || u.name,
+                                        bedroomNumber: bedroom.bedroomNumber,
+                                        tenantName: bLease.tenant ? (bLease.tenant.companyName || `${bLease.tenant.firstName || ''} ${bLease.tenant.lastName || ''}`.trim() || bLease.tenant.name || '-') : '-',
+                                        startDate: bLease.startDate,
+                                        endDate: bLease.endDate,
+                                        monthlyRent: rent,
+                                        potentialRent: rent,
+                                        vacancyLoss: 0,
+                                        outstandingRent: bRentBalance,
+                                        outstandingDeposit: bDepositBalance,
+                                        status: 'Occupied'
+                                    });
+                                } else if (bedroom.reserved_flag) {
+                                    totalPotentialMonthlyRent += bPotentialRent;
+                                    const prospectName = bedroom.reserved_by_user ? (bedroom.reserved_by_user.name || `${bedroom.reserved_by_user.firstName || ''} ${bedroom.reserved_by_user.lastName || ''}`.trim()) : (u.status_note || 'Reserved');
+                                    rentRollArray.push({
+                                        id: `bed-${bedroom.id}`,
+                                        parentUnitId: u.id,
+                                        buildingName: u.property?.name || 'N/A',
+                                        leaseType: 'Bedroom Lease',
+                                        unitNumber: u.unitNumber || u.name,
+                                        bedroomNumber: bedroom.bedroomNumber,
+                                        tenantName: prospectName,
+                                        startDate: null,
+                                        endDate: null,
+                                        monthlyRent: bPotentialRent,
+                                        potentialRent: bPotentialRent,
+                                        vacancyLoss: 0,
+                                        outstandingRent: 0,
+                                        outstandingDeposit: 0,
+                                        status: 'Reserved'
+                                    });
+                                } else {
+                                    // Occupied but no lease found (fallback)
+                                    totalPotentialMonthlyRent += bPotentialRent;
+                                    rentRollArray.push({
+                                        id: `bed-${bedroom.id}`,
+                                        parentUnitId: u.id,
+                                        buildingName: u.property?.name || 'N/A',
+                                        leaseType: 'Bedroom Lease',
+                                        unitNumber: u.unitNumber || u.name,
+                                        bedroomNumber: bedroom.bedroomNumber,
+                                        tenantName: 'Unknown (Occupied)',
+                                        startDate: null,
+                                        endDate: null,
+                                        monthlyRent: 0,
+                                        potentialRent: bPotentialRent,
+                                        vacancyLoss: 0,
+                                        outstandingRent: 0,
+                                        outstandingDeposit: 0,
+                                        status: 'Occupied'
+                                    });
+                                }
+                            } else {
+                                vacantBedrooms++;
+                                unitIsFullyOccupied = false;
+                                totalPotentialMonthlyRent += bPotentialRent;
+                                totalVacancyLoss += bPotentialRent;
+
+                                rentRollArray.push({
+                                    id: `bed-${bedroom.id}`,
+                                    parentUnitId: u.id,
+                                    buildingName: u.property?.name || 'N/A',
+                                    leaseType: 'Bedroom Lease',
+                                    unitNumber: u.unitNumber || u.name,
+                                    bedroomNumber: bedroom.bedroomNumber,
+                                    tenantName: '-',
+                                    startDate: null,
+                                    endDate: null,
+                                    monthlyRent: bPotentialRent, // Shows Potential Rent when vacant
+                                    potentialRent: bPotentialRent,
+                                    vacancyLoss: bPotentialRent,
+                                    outstandingRent: 0,
+                                    outstandingDeposit: 0,
+                                    status: 'Vacant'
+                                });
+                            }
+                        });
+
+                        if (unitIsFullyVacant) vacantUnits++;
+                        else if (unitIsFullyOccupied) occupiedUnits++;
+                        else occupiedUnits++; // Partially occupied is counted as occupied unit broadly
+                    }
                 }
             }
         });
