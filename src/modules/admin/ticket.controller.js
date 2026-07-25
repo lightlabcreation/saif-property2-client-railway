@@ -310,26 +310,6 @@ exports.exportTickets = async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        const headers = [
-            "Ticket Number",
-            "Date and Time Submitted",
-            "Date and Time Acknowledged",
-            "Date and Time Completed / Closed / Resolved",
-            "Current Status",
-            "Ticket Category / Type",
-            "Priority",
-            "Building",
-            "Unit Number",
-            "Tenant Name",
-            "Assigned Employee / Contractor",
-            "Time from Submission to Assignment",
-            "Total Time to Resolution",
-            "Current Assignee",
-            "Created By",
-            "Last Updated Date",
-            "Completion Notes"
-        ];
-
         const rows = tickets.map(t => {
             const ticketNum = `T-${t.id + 1000}`;
             const submitted = t.createdAt ? t.createdAt.toISOString().replace('T', ' ').substring(0, 19) : '';
@@ -367,7 +347,7 @@ exports.exportTickets = async (req, res) => {
             const lastUpdated = t.updatedAt ? t.updatedAt.toISOString().replace('T', ' ').substring(0, 19) : '';
             const completionNotes = t.unit?.status_note || 'N/A';
 
-            return [
+            return {
                 ticketNum,
                 submitted,
                 acknowledged,
@@ -385,28 +365,132 @@ exports.exportTickets = async (req, res) => {
                 createdBy,
                 lastUpdated,
                 completionNotes
-            ];
+            };
         });
 
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => 
-                row.map(val => {
-                    const str = String(val === null || val === undefined ? '' : val);
-                    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-                        return `"${str.replace(/"/g, '""')}"`;
-                    }
-                    return str;
-                }).join(',')
-            )
-        ].join('\n');
+        // Build a highly professional Excel XML/HTML structure
+        let xlsContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
+<!--[if gte mso 9]>
+<xml>
+ <x:ExcelWorkbook>
+  <x:ExcelWorksheets>
+   <x:ExcelWorksheet>
+    <x:Name>Tickets Operational Report</x:Name>
+    <x:WorksheetOptions>
+     <x:DisplayGridlines/>
+    </x:WorksheetOptions>
+   </x:ExcelWorksheet>
+  </x:ExcelWorksheets>
+ </x:ExcelWorkbook>
+</xml>
+<![endif]-->
+<style>
+  th {
+    font-family: Arial, sans-serif;
+    font-size: 11pt;
+    font-weight: bold;
+    color: #0f172a;
+    background-color: #cbd5e1;
+    border: 0.5pt solid #94a3b8;
+    text-align: left;
+    vertical-align: middle;
+  }
+  td {
+    font-family: Arial, sans-serif;
+    font-size: 10pt;
+    border: 0.5pt solid #cbd5e1;
+    vertical-align: middle;
+  }
+  .text-cell {
+    mso-number-format:"\\@";
+  }
+  .date-cell {
+    mso-number-format:"yyyy-mm-dd hh\\:mm\\:ss";
+  }
+</style>
+</head>
+<body>
+<table>
+  <colgroup>
+    <col width="110"> <!-- Ticket Number -->
+    <col width="160"> <!-- Date Submitted -->
+    <col width="160"> <!-- Date Acknowledged -->
+    <col width="160"> <!-- Date Resolved -->
+    <col width="110"> <!-- Status -->
+    <col width="180"> <!-- Category / Type -->
+    <col width="90">  <!-- Priority -->
+    <col width="140"> <!-- Building -->
+    <col width="110"> <!-- Unit Number -->
+    <col width="160"> <!-- Tenant Name -->
+    <col width="200"> <!-- Assigned Employee -->
+    <col width="200"> <!-- Time to Assignment -->
+    <col width="200"> <!-- Total Time to Resolution -->
+    <col width="200"> <!-- Current Assignee -->
+    <col width="160"> <!-- Created By -->
+    <col width="160"> <!-- Last Updated Date -->
+    <col width="240"> <!-- Completion Notes -->
+  </colgroup>
+  <thead>
+    <tr height="25">
+      <th>Ticket Number</th>
+      <th>Date and Time Submitted</th>
+      <th>Date and Time Acknowledged</th>
+      <th>Date and Time Completed / Closed / Resolved</th>
+      <th>Current Status</th>
+      <th>Ticket Category / Type</th>
+      <th>Priority</th>
+      <th>Building</th>
+      <th>Unit Number</th>
+      <th>Tenant Name</th>
+      <th>Assigned Employee / Contractor</th>
+      <th>Time from Submission to Assignment</th>
+      <th>Total Time to Resolution</th>
+      <th>Current Assignee</th>
+      <th>Created By</th>
+      <th>Last Updated Date</th>
+      <th>Completion Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+`;
 
-        res.setHeader('Content-Type', 'text/csv');
-        res.setHeader('Content-Disposition', `attachment; filename=tickets_export_${new Date().toISOString().slice(0, 10)}.csv`);
-        res.status(200).send(csvContent);
+        rows.forEach(r => {
+            xlsContent += `
+    <tr height="20">
+      <td class="text-cell" style="font-weight: bold; color: #4f46e5;">${r.ticketNum}</td>
+      <td class="date-cell">${r.submitted}</td>
+      <td class="date-cell">${r.acknowledged}</td>
+      <td class="date-cell">${r.resolved}</td>
+      <td class="text-cell" style="font-weight: bold;">${r.status}</td>
+      <td class="text-cell">${r.categoryType}</td>
+      <td class="text-cell">${r.priority}</td>
+      <td class="text-cell">${r.building}</td>
+      <td class="text-cell">${r.unitNumber}</td>
+      <td class="text-cell">${r.tenantName}</td>
+      <td class="text-cell">${r.assignee}</td>
+      <td class="text-cell">${r.timeToAssignment}</td>
+      <td class="text-cell">${r.timeToResolution}</td>
+      <td class="text-cell">${r.currentAssignee}</td>
+      <td class="text-cell">${r.createdBy}</td>
+      <td class="date-cell">${r.lastUpdated}</td>
+      <td class="text-cell">${r.completionNotes}</td>
+    </tr>`;
+        });
+
+        xlsContent += `
+  </tbody>
+</table>
+</body>
+</html>`;
+
+        res.setHeader('Content-Type', 'application/vnd.ms-excel');
+        res.setHeader('Content-Disposition', `attachment; filename=tickets_export_${new Date().toISOString().slice(0, 10)}.xls`);
+        res.status(200).send(xlsContent);
     } catch (e) {
         console.error(e);
         res.status(500).json({ message: 'Server error generating tickets export' });
     }
 };
-
