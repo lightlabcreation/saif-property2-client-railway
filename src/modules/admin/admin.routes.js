@@ -57,6 +57,7 @@ router.put('/owners/:id', checkPermission('Owners', 'edit'), adminController.upd
 router.post('/owners/:id/send-invite', checkPermission('Owners', 'edit'), adminController.sendInvite);
 router.delete('/owners/:id', checkPermission('Owners', 'delete'), adminController.deleteOwner);
 
+router.get('/tickets/export', checkPermission('Tickets', 'view'), ticketController.exportTickets);
 router.get('/tickets', checkPermission('Tickets', 'view'), ticketController.getAllTickets);
 router.post('/tickets', checkPermission('Tickets', 'add'), ticketController.createTicket);
 router.put('/tickets/:id/status', checkPermission('Tickets', 'edit'), ticketController.updateTicketStatus);

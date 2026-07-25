@@ -278,3 +278,135 @@ exports.getTicketAttachment = async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 };
+
+// GET /api/admin/tickets/export
+exports.exportTickets = async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+
+        const where = {};
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) {
+                where.createdAt.gte = new Date(startDate);
+            }
+            if (endDate) {
+                const end = new Date(endDate);
+                if (!endDate.includes('T')) {
+                    end.setHours(23, 59, 59, 999);
+                }
+                where.createdAt.lte = end;
+            }
+        }
+
+        const tickets = await prisma.ticket.findMany({
+            where,
+            include: {
+                user: true,
+                unit: { include: { property: true } },
+                property: true,
+                inspection: { include: { inspector: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        const headers = [
+            "Ticket Number",
+            "Date and Time Submitted",
+            "Date and Time Acknowledged",
+            "Date and Time Completed / Closed / Resolved",
+            "Current Status",
+            "Ticket Category / Type",
+            "Priority",
+            "Building",
+            "Unit Number",
+            "Tenant Name",
+            "Assigned Employee / Contractor",
+            "Time from Submission to Assignment",
+            "Total Time to Resolution",
+            "Current Assignee",
+            "Created By",
+            "Last Updated Date",
+            "Completion Notes"
+        ];
+
+        const rows = tickets.map(t => {
+            const ticketNum = `T-${t.id + 1000}`;
+            const submitted = t.createdAt ? t.createdAt.toISOString().replace('T', ' ').substring(0, 19) : '';
+            
+            const isAcknowledged = ['In Progress', 'Resolved', 'Closed', 'Completed'].includes(t.status);
+            const acknowledged = isAcknowledged && t.updatedAt
+                ? t.updatedAt.toISOString().replace('T', ' ').substring(0, 19)
+                : 'N/A';
+
+            const resolved = t.resolvedAt ? t.resolvedAt.toISOString().replace('T', ' ').substring(0, 19) : 'N/A';
+            const status = t.status || 'Open';
+            const categoryType = [t.category, t.type].filter(Boolean).join(' / ') || 'N/A';
+            const priority = t.priority || 'Low';
+            const building = t.property?.name || t.unit?.property?.name || 'N/A';
+            const unitNumber = t.unit?.unitNumber || 'N/A';
+            const tenantName = t.user?.name || 'N/A';
+            const assignee = t.inspection?.inspector?.name || 'Admin / Property Manager';
+            
+            let timeToAssignment = 'N/A';
+            if (isAcknowledged && t.updatedAt && t.createdAt) {
+                const diffMs = t.updatedAt.getTime() - t.createdAt.getTime();
+                const diffHrs = (diffMs / (1000 * 60 * 60)).toFixed(2);
+                timeToAssignment = `${diffHrs} hours`;
+            }
+
+            let timeToResolution = 'N/A';
+            if (t.resolvedAt && t.createdAt) {
+                const diffMs = t.resolvedAt.getTime() - t.createdAt.getTime();
+                const diffHrs = (diffMs / (1000 * 60 * 60)).toFixed(2);
+                timeToResolution = `${diffHrs} hours`;
+            }
+
+            const currentAssignee = assignee;
+            const createdBy = t.user?.name || 'System';
+            const lastUpdated = t.updatedAt ? t.updatedAt.toISOString().replace('T', ' ').substring(0, 19) : '';
+            const completionNotes = t.unit?.status_note || 'N/A';
+
+            return [
+                ticketNum,
+                submitted,
+                acknowledged,
+                resolved,
+                status,
+                categoryType,
+                priority,
+                building,
+                unitNumber,
+                tenantName,
+                assignee,
+                timeToAssignment,
+                timeToResolution,
+                currentAssignee,
+                createdBy,
+                lastUpdated,
+                completionNotes
+            ];
+        });
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => 
+                row.map(val => {
+                    const str = String(val === null || val === undefined ? '' : val);
+                    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+                        return `"${str.replace(/"/g, '""')}"`;
+                    }
+                    return str;
+                }).join(',')
+            )
+        ].join('\n');
+
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename=tickets_export_${new Date().toISOString().slice(0, 10)}.csv`);
+        res.status(200).send(csvContent);
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Server error generating tickets export' });
+    }
+};
+
