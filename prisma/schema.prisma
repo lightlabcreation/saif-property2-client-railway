@@ -46,6 +46,8 @@ model User {
   refreshTokens     RefreshToken[]
   refundAdjustments RefundAdjustment[]
   tickets           Ticket[]
+  assignedTickets   Ticket[]           @relation("TicketAssignee")
+  assignedByTickets Ticket[]           @relation("TicketAssigner")
   residentLease     Lease?             @relation("LeaseResidents", fields: [leaseId], references: [id])
   parent            User?              @relation("TenantResidents", fields: [parentId], references: [id])
   residents         User[]             @relation("TenantResidents")
@@ -427,6 +429,12 @@ model Ticket {
   source         String? // MOVE_OUT_INSPECTION, MOVE_IN_INSPECTION, MAINTENANCE
   isRequired     Boolean     @default(false)
   inspectionId   Int?
+  assignedToId   Int?
+  assignedById   Int?
+  assignedAt     DateTime?
+  completedAt    DateTime?
+  assignedTo     User?       @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  assignedBy     User?       @relation("TicketAssigner", fields: [assignedById], references: [id])
   user           User        @relation(fields: [userId], references: [id], map: "Ticket_userId_fkey")
   inspection     Inspection? @relation(fields: [inspectionId], references: [id])
   property       Property?   @relation(fields: [propertyId], references: [id])

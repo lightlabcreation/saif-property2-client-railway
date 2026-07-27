@@ -5,11 +5,39 @@ const { uploadToCloudinary } = require('../../config/cloudinary');
 // GET /api/admin/tickets
 exports.getAllTickets = async (req, res) => {
     try {
-        const { userId } = req.query;
+        const { userId, startDate, endDate, propertyId, status, category, priority, assignedToId } = req.query;
 
         const where = {};
         if (userId) {
             where.userId = parseInt(userId);
+        }
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) {
+                where.createdAt.gte = new Date(startDate);
+            }
+            if (endDate) {
+                const end = new Date(endDate);
+                if (!endDate.includes('T')) {
+                    end.setHours(23, 59, 59, 999);
+                }
+                where.createdAt.lte = end;
+            }
+        }
+        if (propertyId && propertyId !== 'all') {
+            where.propertyId = parseInt(propertyId);
+        }
+        if (status && status !== 'All') {
+            where.status = status;
+        }
+        if (category) {
+            where.category = category;
+        }
+        if (priority && priority !== 'All') {
+            where.priority = priority;
+        }
+        if (assignedToId) {
+            where.assignedToId = parseInt(assignedToId);
         }
 
         const tickets = await prisma.ticket.findMany({
@@ -18,7 +46,9 @@ exports.getAllTickets = async (req, res) => {
                 user: true,
                 unit: { include: { property: true } },
                 property: true,
-                inspection: { include: { inspector: true } }
+                inspection: { include: { inspector: true } },
+                assignedTo: true,
+                assignedBy: true
             },
             orderBy: { createdAt: 'desc' }
         });
@@ -47,6 +77,12 @@ exports.getAllTickets = async (req, res) => {
                 createdAtRaw: t.createdAt.toISOString(),
                 date: t.createdAt.toISOString().split('T')[0],
                 resolvedAt: t.resolvedAt ? t.resolvedAt.toISOString() : null,
+                assignedToName: t.assignedTo?.name || 'Unassigned',
+                assignedToId: t.assignedToId,
+                assignedByName: t.assignedBy?.name || 'N/A',
+                assignedById: t.assignedById,
+                assignedAt: t.assignedAt ? t.assignedAt.toISOString() : null,
+                completedAt: t.completedAt ? t.completedAt.toISOString() : null,
                 attachments: (() => {
                     try {
                         return t.attachmentUrls ? JSON.parse(t.attachmentUrls) : [];
@@ -86,12 +122,16 @@ exports.updateTicketStatus = async (req, res) => {
 
         const ticketId = parseInt(id);
 
+        const updateObj = { status };
+        if (status === 'Resolved') {
+            updateObj.resolvedAt = new Date();
+        } else if (status === 'Completed') {
+            updateObj.completedAt = new Date();
+        }
+
         const updated = await prisma.ticket.update({
             where: { id: ticketId },
-            data: { 
-                status,
-                resolvedAt: status === 'Resolved' ? new Date() : null
-            }
+            data: updateObj
         });
 
         // Trigger Auto-Progression for Unit Prep Flow if applicable
@@ -181,7 +221,7 @@ exports.createTicket = async (req, res) => {
 exports.updateTicket = async (req, res) => {
     try {
         const { id } = req.params;
-        const { subject, description, priority, category, status, propertyId, unitId, tenantId } = req.body;
+        const { subject, description, priority, category, status, propertyId, unitId, tenantId, assignedToId } = req.body;
 
         const updateData = {
             subject,
@@ -196,6 +236,27 @@ exports.updateTicket = async (req, res) => {
 
         if (status !== undefined) {
             updateData.resolvedAt = status === 'Resolved' ? new Date() : null;
+            if (status === 'Completed') {
+                updateData.completedAt = new Date();
+            }
+        }
+
+        if (assignedToId !== undefined) {
+            if (assignedToId === null || assignedToId === '' || assignedToId === 0) {
+                updateData.assignedToId = null;
+                updateData.assignedById = null;
+                updateData.assignedAt = null;
+            } else {
+                updateData.assignedToId = parseInt(assignedToId);
+                // Track who assigned it and when
+                updateData.assignedById = req.user?.id || null;
+                updateData.assignedAt = new Date();
+                // Automatically transition status to Assigned if currently New/Open
+                const currentTicket = await prisma.ticket.findUnique({ where: { id: parseInt(id) } });
+                if (currentTicket && (!status || currentTicket.status === 'New' || currentTicket.status === 'Open')) {
+                    updateData.status = 'Assigned';
+                }
+            }
         }
 
         const updated = await prisma.ticket.update({
@@ -204,7 +265,7 @@ exports.updateTicket = async (req, res) => {
         });
 
         // Trigger Auto-Progression for Unit Prep Flow if applicable
-        if (updated.unitId && status && ['Closed', 'Completed', 'Resolved'].includes(status)) {
+        if (updated.unitId && updated.status && ['Closed', 'Completed', 'Resolved'].includes(updated.status)) {
             await workflowService.checkAndProgressUnitPrep(updated.unitId);
         }
 
@@ -282,9 +343,12 @@ exports.getTicketAttachment = async (req, res) => {
 // GET /api/admin/tickets/export
 exports.exportTickets = async (req, res) => {
     try {
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, propertyId, status, category, priority, assignedToId, userId, format } = req.query;
 
         const where = {};
+        if (userId) {
+            where.userId = parseInt(userId);
+        }
         if (startDate || endDate) {
             where.createdAt = {};
             if (startDate) {
@@ -298,6 +362,21 @@ exports.exportTickets = async (req, res) => {
                 where.createdAt.lte = end;
             }
         }
+        if (propertyId && propertyId !== 'all') {
+            where.propertyId = parseInt(propertyId);
+        }
+        if (status && status !== 'All') {
+            where.status = status;
+        }
+        if (category) {
+            where.category = category;
+        }
+        if (priority && priority !== 'All') {
+            where.priority = priority;
+        }
+        if (assignedToId) {
+            where.assignedToId = parseInt(assignedToId);
+        }
 
         const tickets = await prisma.ticket.findMany({
             where,
@@ -305,47 +384,71 @@ exports.exportTickets = async (req, res) => {
                 user: true,
                 unit: { include: { property: true } },
                 property: true,
-                inspection: { include: { inspector: true } }
+                inspection: { include: { inspector: true } },
+                assignedTo: true,
+                assignedBy: true
             },
             orderBy: { createdAt: 'desc' }
         });
+
+        const formatFriendlyDuration = (ms) => {
+            if (!ms || isNaN(ms) || ms < 0) return 'N/A';
+            const totalMinutes = Math.floor(ms / (1000 * 60));
+            const totalHours = Math.floor(totalMinutes / 60);
+            const mins = totalMinutes % 60;
+            const hours = totalHours % 24;
+            const days = Math.floor(totalHours / 24);
+
+            let parts = [];
+            if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
+            if (hours > 0) parts.push(`${hours} hr${hours > 1 ? 's' : ''}`);
+            if (mins > 0 || parts.length === 0) parts.push(`${mins} min`);
+            return parts.join(' ');
+        };
 
         const rows = tickets.map(t => {
             const ticketNum = `T-${t.id + 1000}`;
             const submitted = t.createdAt ? t.createdAt.toISOString().replace('T', ' ').substring(0, 19) : '';
             
-            const isAcknowledged = ['In Progress', 'Resolved', 'Closed', 'Completed'].includes(t.status);
-            const acknowledged = isAcknowledged && t.updatedAt
-                ? t.updatedAt.toISOString().replace('T', ' ').substring(0, 19)
-                : 'N/A';
+            const isAcknowledged = ['In Progress', 'Resolved', 'Closed', 'Completed', 'Assigned'].includes(t.status) || t.assignedAt;
+            const acknowledged = t.assignedAt 
+                ? t.assignedAt.toISOString().replace('T', ' ').substring(0, 19)
+                : (isAcknowledged && t.updatedAt ? t.updatedAt.toISOString().replace('T', ' ').substring(0, 19) : 'N/A');
 
-            const resolved = t.resolvedAt ? t.resolvedAt.toISOString().replace('T', ' ').substring(0, 19) : 'N/A';
-            const status = t.status || 'Open';
+            const resolved = t.completedAt 
+                ? t.completedAt.toISOString().replace('T', ' ').substring(0, 19)
+                : (t.resolvedAt ? t.resolvedAt.toISOString().replace('T', ' ').substring(0, 19) : 'N/A');
             
-            // Clean Category / Type formatting
+            const statusStr = t.status || 'Open';
+            
             const rawCat = t.category || t.type || 'N/A';
             const categoryType = rawCat.charAt(0).toUpperCase() + rawCat.slice(1).toLowerCase();
             
-            const priority = t.priority || 'Low';
+            const priorityStr = t.priority || 'Low';
             const building = t.property?.name || t.unit?.property?.name || 'N/A';
             const unitNumber = t.unit?.unitNumber || 'N/A';
             const tenantName = t.user?.name || 'N/A';
             
-            // Fix: Fallback to 'Unassigned'
-            const assignee = t.inspection?.inspector?.name || 'Unassigned';
+            const assignee = t.assignedTo?.name || t.inspection?.inspector?.name || 'Unassigned';
+            const assignedBy = t.assignedBy?.name || 'N/A';
+            const dateAssigned = t.assignedAt ? t.assignedAt.toISOString().replace('T', ' ').substring(0, 19) : 'N/A';
             
             let timeToAssignment = 'N/A';
-            if (isAcknowledged && t.updatedAt && t.createdAt) {
-                const diffMs = t.updatedAt.getTime() - t.createdAt.getTime();
-                const diffHrs = (diffMs / (1000 * 60 * 60)).toFixed(2);
-                timeToAssignment = `${diffHrs} hours`;
+            let responseTimeHours = 'N/A';
+            const assignTime = t.assignedAt || (isAcknowledged ? t.updatedAt : null);
+            if (assignTime && t.createdAt) {
+                const diffMs = assignTime.getTime() - t.createdAt.getTime();
+                timeToAssignment = formatFriendlyDuration(diffMs);
+                responseTimeHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
             }
 
             let timeToResolution = 'N/A';
-            if (t.resolvedAt && t.createdAt) {
-                const diffMs = t.resolvedAt.getTime() - t.createdAt.getTime();
-                const diffHrs = (diffMs / (1000 * 60 * 60)).toFixed(2);
-                timeToResolution = `${diffHrs} hours`;
+            let resolutionTimeHours = 'N/A';
+            const compTime = t.completedAt || t.resolvedAt;
+            if (compTime && t.createdAt) {
+                const diffMs = compTime.getTime() - t.createdAt.getTime();
+                timeToResolution = formatFriendlyDuration(diffMs);
+                resolutionTimeHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
             }
 
             const currentAssignee = assignee;
@@ -358,15 +461,19 @@ exports.exportTickets = async (req, res) => {
                 submitted,
                 acknowledged,
                 resolved,
-                status,
+                status: statusStr,
                 categoryType,
-                priority,
+                priority: priorityStr,
                 building,
                 unitNumber,
                 tenantName,
                 assignee,
+                assignedBy,
+                dateAssigned,
                 timeToAssignment,
+                responseTimeHours,
                 timeToResolution,
+                resolutionTimeHours,
                 currentAssignee,
                 createdBy,
                 lastUpdated,
@@ -374,7 +481,38 @@ exports.exportTickets = async (req, res) => {
             };
         });
 
-        // Build professional Excel XML/HTML structure with auto-row height (removed tr height attributes)
+        // 1. CSV Format
+        if (format === 'csv') {
+            const headers = [
+                'Ticket Number', 'Date and Time Submitted', 'Date and Time Acknowledged', 
+                'Date and Time Completed / Closed / Resolved', 'Current Status', 'Ticket Category / Type', 
+                'Priority', 'Building', 'Unit Number', 'Tenant Name', 'Assigned Employee / Contractor',
+                'Assigned By', 'Date and Time Assigned',
+                'Time from Submission to Assignment', 'Response Time (Hours)', 
+                'Total Time to Resolution', 'Resolution Time (Hours)', 'Current Assignee', 
+                'Created By', 'Last Updated Date', 'Completion Notes'
+            ];
+
+            const csvRows = [headers.join(',')];
+            rows.forEach(r => {
+                const values = [
+                    r.ticketNum, r.submitted, r.acknowledged, r.resolved, r.status, r.categoryType,
+                    r.priority, r.building, r.unitNumber, r.tenantName, r.assignee, r.assignedBy, r.dateAssigned,
+                    r.timeToAssignment, r.responseTimeHours, r.timeToResolution, r.resolutionTimeHours,
+                    r.currentAssignee, r.createdBy, r.lastUpdated, r.completionNotes
+                ].map(val => {
+                    const clean = (val || '').toString().replace(/"/g, '""');
+                    return clean.includes(',') || clean.includes('\n') || clean.includes('"') ? `"${clean}"` : clean;
+                });
+                csvRows.push(values.join(','));
+            });
+
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename=tickets_export_${new Date().toISOString().slice(0, 10)}.csv`);
+            return res.status(200).send(csvRows.join('\n'));
+        }
+
+        // 2. Excel XML/HTML Format
         let xlsContent = `
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
 <head>
@@ -416,6 +554,9 @@ exports.exportTickets = async (req, res) => {
   .date-cell {
     mso-number-format:"yyyy-mm-dd hh\\:mm\\:ss";
   }
+  .number-cell {
+    mso-number-format:"0\\.00";
+  }
 </style>
 </head>
 <body>
@@ -432,8 +573,12 @@ exports.exportTickets = async (req, res) => {
     <col width="110"> <!-- Unit Number -->
     <col width="160"> <!-- Tenant Name -->
     <col width="200"> <!-- Assigned Employee -->
+    <col width="160"> <!-- Assigned By -->
+    <col width="160"> <!-- Date Assigned -->
     <col width="200"> <!-- Time to Assignment -->
+    <col width="150"> <!-- Response Time Hours -->
     <col width="200"> <!-- Total Time to Resolution -->
+    <col width="150"> <!-- Resolution Time Hours -->
     <col width="200"> <!-- Current Assignee -->
     <col width="160"> <!-- Created By -->
     <col width="160"> <!-- Last Updated Date -->
@@ -452,8 +597,12 @@ exports.exportTickets = async (req, res) => {
       <th>Unit Number</th>
       <th>Tenant Name</th>
       <th>Assigned Employee / Contractor</th>
+      <th>Assigned By</th>
+      <th>Date and Time Assigned</th>
       <th>Time from Submission to Assignment</th>
+      <th>Response Time (Hours)</th>
       <th>Total Time to Resolution</th>
+      <th>Resolution Time (Hours)</th>
       <th>Current Assignee</th>
       <th>Created By</th>
       <th>Last Updated Date</th>
@@ -477,8 +626,12 @@ exports.exportTickets = async (req, res) => {
       <td class="text-cell">${r.unitNumber}</td>
       <td class="text-cell">${r.tenantName}</td>
       <td class="text-cell">${r.assignee}</td>
+      <td class="text-cell">${r.assignedBy}</td>
+      <td class="date-cell">${r.dateAssigned}</td>
       <td class="text-cell">${r.timeToAssignment}</td>
+      <td class="number-cell">${r.responseTimeHours}</td>
       <td class="text-cell">${r.timeToResolution}</td>
+      <td class="number-cell">${r.resolutionTimeHours}</td>
       <td class="text-cell">${r.currentAssignee}</td>
       <td class="text-cell">${r.createdBy}</td>
       <td class="date-cell">${r.lastUpdated}</td>
