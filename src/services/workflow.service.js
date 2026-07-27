@@ -816,7 +816,7 @@ const completeMoveOutFlow = async (moveOutId, userId) => {
                 new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate())
             );
 
-            const finalStatus = isNaturalExpiry ? 'Expired' : 'TERMINATED';
+            const finalStatus = 'Expired';
 
             await tx.lease.update({
                 where: { id: moveOut.leaseId },
