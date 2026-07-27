@@ -484,7 +484,7 @@ exports.exportTickets = async (req, res) => {
         // 1. CSV Format
         if (format === 'csv') {
             const headers = [
-                'Ticket Number', 'Date and Time Submitted', 'Date and Time Acknowledged', 
+                'S.No', 'Ticket Number', 'Date and Time Submitted', 'Date and Time Acknowledged', 
                 'Date and Time Completed / Closed / Resolved', 'Current Status', 'Ticket Category / Type', 
                 'Priority', 'Building', 'Unit Number', 'Tenant Name', 'Assigned Employee / Contractor',
                 'Assigned By', 'Date and Time Assigned',
@@ -494,9 +494,9 @@ exports.exportTickets = async (req, res) => {
             ];
 
             const csvRows = [headers.join(',')];
-            rows.forEach(r => {
+            rows.forEach((r, idx) => {
                 const values = [
-                    r.ticketNum, r.submitted, r.acknowledged, r.resolved, r.status, r.categoryType,
+                    (idx + 1).toString(), r.ticketNum, r.submitted, r.acknowledged, r.resolved, r.status, r.categoryType,
                     r.priority, r.building, r.unitNumber, r.tenantName, r.assignee, r.assignedBy, r.dateAssigned,
                     r.timeToAssignment, r.responseTimeHours, r.timeToResolution, r.resolutionTimeHours,
                     r.currentAssignee, r.createdBy, r.lastUpdated, r.completionNotes
@@ -513,8 +513,7 @@ exports.exportTickets = async (req, res) => {
         }
 
         // 2. Excel XML/HTML Format
-        let xlsContent = `
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+        let xlsContent = `<html>
 <head>
 <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
 <!--[if gte mso 9]>
@@ -562,6 +561,7 @@ exports.exportTickets = async (req, res) => {
 <body>
 <table>
   <colgroup>
+    <col width="60"> <!-- S.No -->
     <col width="110"> <!-- Ticket Number -->
     <col width="160"> <!-- Date Submitted -->
     <col width="160"> <!-- Date Acknowledged -->
@@ -586,6 +586,7 @@ exports.exportTickets = async (req, res) => {
   </colgroup>
   <thead>
     <tr>
+      <th>S.No</th>
       <th>Ticket Number</th>
       <th>Date and Time Submitted</th>
       <th>Date and Time Acknowledged</th>
@@ -609,41 +610,13 @@ exports.exportTickets = async (req, res) => {
       <th>Completion Notes</th>
     </tr>
   </thead>
-  <tbody>
-`;
+  <tbody>`;
 
-        rows.forEach(r => {
-            xlsContent += `
-    <tr>
-      <td class="text-cell" style="font-weight: bold; color: #4f46e5;">${r.ticketNum}</td>
-      <td class="date-cell">${r.submitted}</td>
-      <td class="date-cell">${r.acknowledged}</td>
-      <td class="date-cell">${r.resolved}</td>
-      <td class="text-cell" style="font-weight: bold;">${r.status}</td>
-      <td class="text-cell">${r.categoryType}</td>
-      <td class="text-cell">${r.priority}</td>
-      <td class="text-cell">${r.building}</td>
-      <td class="text-cell">${r.unitNumber}</td>
-      <td class="text-cell">${r.tenantName}</td>
-      <td class="text-cell">${r.assignee}</td>
-      <td class="text-cell">${r.assignedBy}</td>
-      <td class="date-cell">${r.dateAssigned}</td>
-      <td class="text-cell">${r.timeToAssignment}</td>
-      <td class="number-cell">${r.responseTimeHours}</td>
-      <td class="text-cell">${r.timeToResolution}</td>
-      <td class="number-cell">${r.resolutionTimeHours}</td>
-      <td class="text-cell">${r.currentAssignee}</td>
-      <td class="text-cell">${r.createdBy}</td>
-      <td class="date-cell">${r.lastUpdated}</td>
-      <td class="text-cell">${r.completionNotes}</td>
-    </tr>`;
+        rows.forEach((r, idx) => {
+            xlsContent += `<tr><td class="text-cell" style="text-align: center;">${idx + 1}</td><td class="text-cell" style="font-weight: bold; color: #4f46e5;">${r.ticketNum}</td><td class="date-cell">${r.submitted}</td><td class="date-cell">${r.acknowledged}</td><td class="date-cell">${r.resolved}</td><td class="text-cell" style="font-weight: bold;">${r.status}</td><td class="text-cell">${r.categoryType}</td><td class="text-cell">${r.priority}</td><td class="text-cell">${r.building}</td><td class="text-cell">${r.unitNumber}</td><td class="text-cell">${r.tenantName}</td><td class="text-cell">${r.assignee}</td><td class="text-cell">${r.assignedBy}</td><td class="date-cell">${r.dateAssigned}</td><td class="text-cell">${r.timeToAssignment}</td><td class="number-cell">${r.responseTimeHours}</td><td class="text-cell">${r.timeToResolution}</td><td class="number-cell">${r.resolutionTimeHours}</td><td class="text-cell">${r.currentAssignee}</td><td class="text-cell">${r.createdBy}</td><td class="date-cell">${r.lastUpdated}</td><td class="text-cell">${r.completionNotes}</td></tr>`;
         });
 
-        xlsContent += `
-  </tbody>
-</table>
-</body>
-</html>`;
+        xlsContent += `</tbody></table></body></html>`;
 
         res.setHeader('Content-Type', 'application/vnd.ms-excel');
         res.setHeader('Content-Disposition', `attachment; filename=tickets_export_${new Date().toISOString().slice(0, 10)}.xls`);
