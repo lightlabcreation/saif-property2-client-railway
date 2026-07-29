@@ -169,6 +169,12 @@ router.get('/coworkers/:id/permissions', coworkerController.getPermissions);
 router.put('/coworkers/:id/permissions', coworkerController.updatePermissions);
 router.post('/coworkers/:id/send-invite', coworkerController.sendInvitation);
 
+const categoryController = require('./category.controller');
+router.get('/ticket-categories', categoryController.getCategories);
+router.post('/ticket-categories', categoryController.createCategory);
+router.delete('/ticket-categories/:id', categoryController.deleteCategory);
+
+
 // Shuttle Management API Bridge
 const shuttleRoutes = require('./shuttle.routes');
 router.use('/shuttle', shuttleRoutes);

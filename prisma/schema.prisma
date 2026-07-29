@@ -1111,3 +1111,11 @@ enum BlockingStatus {
   MOVE_OUT
   BOTH
 }
+
+model TicketCategory {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  @@map("ticket_category")
+}
+
