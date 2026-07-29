@@ -434,31 +434,27 @@ exports.exportTickets = async (req, res) => {
             const dateAssigned = t.assignedAt ? t.assignedAt.toISOString().replace('T', ' ').substring(0, 19) : 'N/A';
             
             let timeToAssignment = 'N/A';
-            let responseTimeHours = 'N/A';
             const assignTime = t.assignedAt || (isAcknowledged ? t.updatedAt : null);
             if (assignTime && t.createdAt) {
                 const diffMs = assignTime.getTime() - t.createdAt.getTime();
                 timeToAssignment = formatFriendlyDuration(diffMs);
-                responseTimeHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
             }
 
             let timeToResolution = 'N/A';
-            let resolutionTimeHours = 'N/A';
             const compTime = t.completedAt || t.resolvedAt;
             if (compTime && t.createdAt) {
                 const diffMs = compTime.getTime() - t.createdAt.getTime();
                 timeToResolution = formatFriendlyDuration(diffMs);
-                resolutionTimeHours = (diffMs / (1000 * 60 * 60)).toFixed(2);
             }
 
-            const currentAssignee = assignee;
             const createdBy = t.user?.name || 'System';
             const lastUpdated = t.updatedAt ? t.updatedAt.toISOString().replace('T', ' ').substring(0, 19) : '';
-            const completionNotes = t.unit?.status_note || 'N/A';
+            const description = t.description || 'N/A';
 
             return {
                 ticketNum,
                 submitted,
+                createdBy,
                 acknowledged,
                 resolved,
                 status: statusStr,
@@ -471,39 +467,45 @@ exports.exportTickets = async (req, res) => {
                 assignedBy,
                 dateAssigned,
                 timeToAssignment,
-                responseTimeHours,
                 timeToResolution,
-                resolutionTimeHours,
-                currentAssignee,
-                createdBy,
                 lastUpdated,
-                completionNotes
+                description
             };
         });
 
         // 1. CSV Format
         if (format === 'csv') {
             const headers = [
-                'S.No', 'Ticket Number', 'Date and Time Submitted', 'Date and Time Acknowledged', 
+                'S.No', 'Ticket Number', 'Date and Time Submitted', 'Created By', 'Date and Time Acknowledged', 
                 'Date and Time Completed / Closed / Resolved', 'Current Status', 'Ticket Category / Type', 
-                'Priority', 'Building', 'Unit Number', 'Tenant Name', 'Assigned Employee / Contractor',
+                'Priority', 'Building', 'Unit Number', 'Tenant Name', 'Assigned To',
                 'Assigned By', 'Date and Time Assigned',
-                'Time from Submission to Assignment', 'Response Time (Hours)', 
-                'Total Time to Resolution', 'Resolution Time (Hours)', 'Current Assignee', 
-                'Created By', 'Last Updated Date', 'Completion Notes'
+                'Response Time', 'Total Time to Resolution', 'Last Updated Date', 'Ticket Description'
             ];
 
             const csvRows = [headers.join(',')];
             rows.forEach((r, idx) => {
                 const values = [
-                    (idx + 1).toString(), r.ticketNum, r.submitted, r.acknowledged, r.resolved, r.status, r.categoryType,
-                    r.priority, r.building, r.unitNumber, r.tenantName, r.assignee, r.assignedBy, r.dateAssigned,
-                    r.timeToAssignment, r.responseTimeHours, r.timeToResolution, r.resolutionTimeHours,
-                    r.currentAssignee, r.createdBy, r.lastUpdated, r.completionNotes
-                ].map(val => {
-                    const clean = (val || '').toString().replace(/"/g, '""');
-                    return clean.includes(',') || clean.includes('\n') || clean.includes('"') ? `"${clean}"` : clean;
-                });
+                    (idx + 1).toString(),
+                    `"${r.ticketNum}"`,
+                    `"${r.submitted}"`,
+                    `"${r.createdBy.replace(/"/g, '""')}"`,
+                    `"${r.acknowledged}"`,
+                    `"${r.resolved}"`,
+                    `"${r.status}"`,
+                    `"${r.categoryType}"`,
+                    `"${r.priority}"`,
+                    `"${r.building.replace(/"/g, '""')}"`,
+                    `"${r.unitNumber}"`,
+                    `"${r.tenantName.replace(/"/g, '""')}"`,
+                    `"${r.assignee.replace(/"/g, '""')}"`,
+                    `"${r.assignedBy.replace(/"/g, '""')}"`,
+                    `"${r.dateAssigned}"`,
+                    `"${r.timeToAssignment}"`,
+                    `"${r.timeToResolution}"`,
+                    `"${r.lastUpdated}"`,
+                    `"${r.description.replace(/"/g, '""')}"`
+                ];
                 csvRows.push(values.join(','));
             });
 
@@ -553,9 +555,6 @@ exports.exportTickets = async (req, res) => {
   .date-cell {
     mso-number-format:"yyyy-mm-dd hh\\:mm\\:ss";
   }
-  .number-cell {
-    mso-number-format:"0\\.00";
-  }
 </style>
 </head>
 <body>
@@ -564,6 +563,7 @@ exports.exportTickets = async (req, res) => {
     <col width="60"> <!-- S.No -->
     <col width="110"> <!-- Ticket Number -->
     <col width="160"> <!-- Date Submitted -->
+    <col width="160"> <!-- Created By -->
     <col width="160"> <!-- Date Acknowledged -->
     <col width="160"> <!-- Date Resolved -->
     <col width="110"> <!-- Status -->
@@ -572,23 +572,20 @@ exports.exportTickets = async (req, res) => {
     <col width="140"> <!-- Building -->
     <col width="110"> <!-- Unit Number -->
     <col width="160"> <!-- Tenant Name -->
-    <col width="200"> <!-- Assigned Employee -->
+    <col width="200"> <!-- Assigned To -->
     <col width="160"> <!-- Assigned By -->
     <col width="160"> <!-- Date Assigned -->
-    <col width="200"> <!-- Time to Assignment -->
-    <col width="150"> <!-- Response Time Hours -->
+    <col width="200"> <!-- Response Time -->
     <col width="200"> <!-- Total Time to Resolution -->
-    <col width="150"> <!-- Resolution Time Hours -->
-    <col width="200"> <!-- Current Assignee -->
-    <col width="160"> <!-- Created By -->
     <col width="160"> <!-- Last Updated Date -->
-    <col width="240"> <!-- Completion Notes -->
+    <col width="240"> <!-- Ticket Description -->
   </colgroup>
   <thead>
     <tr>
       <th>S.No</th>
       <th>Ticket Number</th>
       <th>Date and Time Submitted</th>
+      <th>Created By</th>
       <th>Date and Time Acknowledged</th>
       <th>Date and Time Completed / Closed / Resolved</th>
       <th>Current Status</th>
@@ -597,23 +594,19 @@ exports.exportTickets = async (req, res) => {
       <th>Building</th>
       <th>Unit Number</th>
       <th>Tenant Name</th>
-      <th>Assigned Employee / Contractor</th>
+      <th>Assigned To</th>
       <th>Assigned By</th>
       <th>Date and Time Assigned</th>
-      <th>Time from Submission to Assignment</th>
-      <th>Response Time (Hours)</th>
+      <th>Response Time</th>
       <th>Total Time to Resolution</th>
-      <th>Resolution Time (Hours)</th>
-      <th>Current Assignee</th>
-      <th>Created By</th>
       <th>Last Updated Date</th>
-      <th>Completion Notes</th>
+      <th>Ticket Description</th>
     </tr>
   </thead>
   <tbody>`;
 
         rows.forEach((r, idx) => {
-            xlsContent += `<tr><td class="text-cell" style="text-align: center;">${idx + 1}</td><td class="text-cell" style="font-weight: bold; color: #4f46e5;">${r.ticketNum}</td><td class="date-cell">${r.submitted}</td><td class="date-cell">${r.acknowledged}</td><td class="date-cell">${r.resolved}</td><td class="text-cell" style="font-weight: bold;">${r.status}</td><td class="text-cell">${r.categoryType}</td><td class="text-cell">${r.priority}</td><td class="text-cell">${r.building}</td><td class="text-cell">${r.unitNumber}</td><td class="text-cell">${r.tenantName}</td><td class="text-cell">${r.assignee}</td><td class="text-cell">${r.assignedBy}</td><td class="date-cell">${r.dateAssigned}</td><td class="text-cell">${r.timeToAssignment}</td><td class="number-cell">${r.responseTimeHours}</td><td class="text-cell">${r.timeToResolution}</td><td class="number-cell">${r.resolutionTimeHours}</td><td class="text-cell">${r.currentAssignee}</td><td class="text-cell">${r.createdBy}</td><td class="date-cell">${r.lastUpdated}</td><td class="text-cell">${r.completionNotes}</td></tr>`;
+            xlsContent += `<tr><td class="text-cell" style="text-align: center;">${idx + 1}</td><td class="text-cell" style="font-weight: bold; color: #4f46e5;">${r.ticketNum}</td><td class="date-cell">${r.submitted}</td><td class="text-cell">${r.createdBy}</td><td class="date-cell">${r.acknowledged}</td><td class="date-cell">${r.resolved}</td><td class="text-cell" style="font-weight: bold;">${r.status}</td><td class="text-cell">${r.categoryType}</td><td class="text-cell">${r.priority}</td><td class="text-cell">${r.building}</td><td class="text-cell">${r.unitNumber}</td><td class="text-cell">${r.tenantName}</td><td class="text-cell">${r.assignee}</td><td class="text-cell">${r.assignedBy}</td><td class="date-cell">${r.dateAssigned}</td><td class="text-cell">${r.timeToAssignment}</td><td class="text-cell">${r.timeToResolution}</td><td class="date-cell">${r.lastUpdated}</td><td class="text-cell">${r.description}</td></tr>`;
         });
 
         xlsContent += `</tbody></table></body></html>`;
