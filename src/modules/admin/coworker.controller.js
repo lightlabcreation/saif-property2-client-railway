@@ -94,9 +94,56 @@ exports.getCoworkers = async (req, res) => {
             orderBy: { createdAt: 'desc' }
         });
 
-        res.json(coworkers);
+        // Fetch active assignees settings
+        const activeAssigneesSetting = await prisma.systemSetting.findUnique({
+            where: { key: 'active_assignee_ids' }
+        });
+
+        let activeIds = [];
+        if (activeAssigneesSetting) {
+            try {
+                activeIds = JSON.parse(activeAssigneesSetting.value);
+            } catch (e) {
+                console.error('Error parsing active_assignee_ids system setting', e);
+            }
+        }
+
+        // If activeIds setting has never been configured, default all coworkers to true
+        const hasConfigured = activeAssigneesSetting !== null;
+
+        const updatedCoworkers = coworkers.map(coworker => ({
+            ...coworker,
+            isAssignee: hasConfigured ? activeIds.includes(coworker.id) : true
+        }));
+
+        res.json(updatedCoworkers);
     } catch (error) {
         console.error('Get Coworkers Error:', error);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+exports.updateActiveAssignees = async (req, res) => {
+    try {
+        const { assigneeIds } = req.body; // Array of user IDs e.g. [1, 3]
+        if (!Array.isArray(assigneeIds)) {
+            return res.status(400).json({ message: 'assigneeIds must be an array of user IDs' });
+        }
+
+        const value = JSON.stringify(assigneeIds.map(Number));
+
+        await prisma.systemSetting.upsert({
+            where: { key: 'active_assignee_ids' },
+            update: { value },
+            create: {
+                key: 'active_assignee_ids',
+                value
+            }
+        });
+
+        res.json({ message: 'Active assignees updated successfully', assigneeIds });
+    } catch (error) {
+        console.error('Update Active Assignees Error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 };

@@ -165,6 +165,7 @@ router.get('/coworkers', coworkerController.getCoworkers);
 router.post('/coworkers', coworkerController.createCoworker);
 router.put('/coworkers/:id', coworkerController.updateCoworker);
 router.delete('/coworkers/:id', coworkerController.deleteCoworker);
+router.post('/active-assignees', coworkerController.updateActiveAssignees);
 router.get('/coworkers/:id/permissions', coworkerController.getPermissions);
 router.put('/coworkers/:id/permissions', coworkerController.updatePermissions);
 router.post('/coworkers/:id/send-invite', coworkerController.sendInvitation);
