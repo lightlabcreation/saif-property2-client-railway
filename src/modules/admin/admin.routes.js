@@ -175,6 +175,11 @@ router.get('/ticket-categories', categoryController.getCategories);
 router.post('/ticket-categories', categoryController.createCategory);
 router.delete('/ticket-categories/:id', categoryController.deleteCategory);
 
+const assigneeController = require('./assignee.controller');
+router.get('/ticket-assignees', assigneeController.getAssignees);
+router.post('/ticket-assignees', assigneeController.createAssignee);
+router.delete('/ticket-assignees/:id', assigneeController.deleteAssignee);
+
 
 // Shuttle Management API Bridge
 const shuttleRoutes = require('./shuttle.routes');

@@ -77,8 +77,9 @@ exports.getAllTickets = async (req, res) => {
                 createdAtRaw: t.createdAt.toISOString(),
                 date: t.createdAt.toISOString().split('T')[0],
                 resolvedAt: t.resolvedAt ? t.resolvedAt.toISOString() : null,
-                assignedToName: t.assignedTo?.name || 'Unassigned',
+                assignedToName: t.assignedToNameString || t.assignedTo?.name || 'Unassigned',
                 assignedToId: t.assignedToId,
+                assignedToNameString: t.assignedToNameString,
                 assignedByName: t.assignedBy?.name || 'N/A',
                 assignedById: t.assignedById,
                 assignedAt: t.assignedAt ? t.assignedAt.toISOString() : null,
@@ -149,7 +150,7 @@ exports.updateTicketStatus = async (req, res) => {
 // POST /api/admin/tickets (Admin creating ticket for tenant)
 exports.createTicket = async (req, res) => {
     try {
-        const { tenantId, subject, description, priority, category, unitId } = req.body;
+        const { tenantId, subject, description, priority, category, unitId, assignedToId } = req.body;
         let { propertyId } = req.body;
 
         const attachmentUrls = [];
@@ -191,6 +192,22 @@ exports.createTicket = async (req, res) => {
             assignId = admin ? admin.id : 1; 
         }
 
+        let assignedToIdVal = null;
+        let assignedToNameStringVal = null;
+        let assignedByIdVal = null;
+        let assignedAtVal = null;
+
+        if (assignedToId) {
+            const parsedId = parseInt(assignedToId);
+            if (isNaN(parsedId)) {
+                assignedToNameStringVal = assignedToId;
+            } else {
+                assignedToIdVal = parsedId;
+            }
+            assignedByIdVal = req.user?.id || null;
+            assignedAtVal = new Date();
+        }
+
         const createdTickets = [];
         for (const pid of targetPropertyIds) {
             const ticket = await prisma.ticket.create({
@@ -200,10 +217,14 @@ exports.createTicket = async (req, res) => {
                     description,
                     priority,
                     category: category || null,
-                    status: 'Open',
+                    status: assignedToId ? 'Assigned' : 'Open',
                     propertyId: pid,
                     unitId: pid ? (unitId ? parseInt(unitId) : null) : null, // Units only apply if 1 property selected usually
-                    attachmentUrls: attachmentUrls.length > 0 ? JSON.stringify(attachmentUrls) : null
+                    attachmentUrls: attachmentUrls.length > 0 ? JSON.stringify(attachmentUrls) : null,
+                    assignedToId: assignedToIdVal,
+                    assignedToNameString: assignedToNameStringVal,
+                    assignedById: assignedByIdVal,
+                    assignedAt: assignedAtVal
                 }
             });
             createdTickets.push(ticket);
@@ -244,11 +265,18 @@ exports.updateTicket = async (req, res) => {
         if (assignedToId !== undefined) {
             if (assignedToId === null || assignedToId === '' || assignedToId === 0) {
                 updateData.assignedToId = null;
+                updateData.assignedToNameString = null;
                 updateData.assignedById = null;
                 updateData.assignedAt = null;
             } else {
-                updateData.assignedToId = parseInt(assignedToId);
-                // Track who assigned it and when
+                const parsedId = parseInt(assignedToId);
+                if (isNaN(parsedId)) {
+                    updateData.assignedToNameString = assignedToId;
+                    updateData.assignedToId = null;
+                } else {
+                    updateData.assignedToId = parsedId;
+                    updateData.assignedToNameString = null;
+                }
                 updateData.assignedById = req.user?.id || null;
                 updateData.assignedAt = new Date();
                 // Automatically transition status to Assigned if currently New/Open

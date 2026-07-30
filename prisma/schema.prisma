@@ -430,6 +430,7 @@ model Ticket {
   isRequired     Boolean     @default(false)
   inspectionId   Int?
   assignedToId   Int?
+  assignedToNameString String?
   assignedById   Int?
   assignedAt     DateTime?
   completedAt    DateTime?
@@ -1117,5 +1118,12 @@ model TicketCategory {
   name String @unique
 
   @@map("ticket_category")
+}
+
+model TicketAssignee {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  @@map("ticket_assignee")
 }
 
