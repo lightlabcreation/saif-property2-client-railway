@@ -23,7 +23,13 @@ const getMoveOutDashboard = async (req, res) => {
                     lte: thirtyDaysFromNow,
                     gte: fourteenDaysAgo
                 },
-                moveOut: null // Only if not already in move-out flow
+                OR: [
+                    { moveOut: null },
+                    { moveOut: { status: 'CANCELLED' } }
+                ]
+            },
+            include: {
+                moveOut: true
             }
         });
 

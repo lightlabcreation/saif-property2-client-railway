@@ -35,7 +35,35 @@ const initMoveOutWorkflow = async (leaseId, tx = prisma) => {
             where: { leaseId }
         });
 
-        if (existingMoveOut) return existingMoveOut;
+        if (existingMoveOut) {
+            if (existingMoveOut.status === 'CANCELLED') {
+                // Reactivate and update date
+                const updatedMoveOut = await pTx.moveOut.update({
+                    where: { leaseId },
+                    data: {
+                        status: 'PENDING',
+                        targetDate: lease.endDate,
+                        actualDate: null,
+                        managerApproved: false
+                    }
+                });
+
+                // Log to Unit History
+                await pTx.unitHistory.create({
+                    data: {
+                        unitId: lease.unitId,
+                        bedroomId: lease.bedroomId,
+                        userId: lease.tenantId,
+                        action: 'MOVE_OUT_REACTIVATED',
+                        newStatus: 'PENDING',
+                        timestamp: new Date()
+                    }
+                });
+
+                return updatedMoveOut;
+            }
+            return existingMoveOut;
+        }
 
         // Create MoveOut record
         const moveOut = await pTx.moveOut.create({
