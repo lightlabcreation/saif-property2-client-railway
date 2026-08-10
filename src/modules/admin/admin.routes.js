@@ -82,6 +82,7 @@ const paymentController = require('./payment.controller');
 router.get('/payments', checkPermission('Payments Received', 'view'), paymentController.getReceivedPayments);
 router.post('/payments', checkPermission('Payments Received', 'add'), paymentController.recordPayment);
 router.get('/outstanding-dues', checkPermission('Outstanding Dues', 'view'), paymentController.getOutstandingDues);
+router.post('/outstanding-dues/:id/send-reminder', checkPermission('Outstanding Dues', 'add'), paymentController.sendRentReminder);
 router.get('/payments/:id/download', checkPermission('Payments Received', 'view'), paymentController.downloadReceiptPDF);
 
 const refundController = require('./refund.controller');

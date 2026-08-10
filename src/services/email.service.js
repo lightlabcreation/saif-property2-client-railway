@@ -85,8 +85,8 @@ class EmailService {
                     status: 'Sent',
                     templateId: templateId ? parseInt(templateId) : null,
                     hasAttachments: attachments.length > 0,
-                    relatedEntity: options.buildingId ? 'Property' : null,
-                    entityId: options.buildingId ? parseInt(options.buildingId) : null
+                    relatedEntity: options.relatedEntity || (options.buildingId ? 'Property' : null),
+                    entityId: options.entityId ? parseInt(options.entityId) : (options.buildingId ? parseInt(options.buildingId) : null)
                 }
             });
 
