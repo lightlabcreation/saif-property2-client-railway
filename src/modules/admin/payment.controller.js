@@ -119,6 +119,12 @@ exports.getOutstandingDues = async (req, res) => {
 exports.sendRentReminder = async (req, res) => {
     try {
         const { id } = req.params;
+
+        // language: 'fr' | 'en' | 'both'  — defaults to 'both' if not provided
+        const language = (req.body && ['fr', 'en', 'both'].includes(req.body.language))
+            ? req.body.language
+            : 'both';
+
         const invoice = await prisma.invoice.findUnique({
             where: { id: parseInt(id) },
             include: {
@@ -138,23 +144,57 @@ exports.sendRentReminder = async (req, res) => {
 
         const balanceDue = parseFloat(invoice.amount || 0) - parseFloat(invoice.paidAmount || 0);
         const formattedAmount = balanceDue.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const formattedDueDate = invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-GB', {
-            day: '2-digit', month: 'short', year: 'numeric'
-        }) : 'N/A';
+        const formattedDueDate = invoice.dueDate
+            ? new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+            : 'N/A';
 
         const EmailService = require('../../services/email.service');
-        const subject = `Rent Reminder: Outstanding Dues for Unit ${invoice.unit?.name || 'N/A'}`;
-        
         const tenantName = tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim() || 'Tenant';
         const invoiceNo = invoice.invoiceNo || 'N/A';
         const unitName = invoice.unit?.name || 'N/A';
 
-        const body = `<p>Dear ${tenantName},</p>
+        // ── French block ────────────────────────────────────────────────────────
+        const subjectFr = `Rappel de loyer : Solde impayé pour l'unité ${unitName}`;
+        const bodyFr = `
+<p>Cher(e) ${tenantName},</p>
+<p>Ceci est un rappel amical que vous avez un solde impayé de <strong>${formattedAmount} $</strong> pour l'unité <strong>${unitName}</strong> (Facture <strong>${invoiceNo}</strong>).</p>
+<p>Cette facture était due le <strong>${formattedDueDate}</strong>.</p>
+<p>Veuillez effectuer votre paiement dans les plus brefs délais. Si vous avez déjà effectué ce paiement, veuillez ignorer ce courriel.</p>
+<p>Merci de votre coopération.</p>
+<p>Cordialement,<br/>Administration<br/>Campus Habitations</p>`;
+
+        // ── English block ────────────────────────────────────────────────────────
+        const subjectEn = `Rent Reminder: Outstanding Dues for Unit ${unitName}`;
+        const bodyEn = `
+<p>Dear ${tenantName},</p>
 <p>This is a friendly reminder that you have an outstanding balance of <strong>$${formattedAmount}</strong> for unit <strong>${unitName}</strong> (Invoice <strong>${invoiceNo}</strong>).</p>
 <p>This invoice was due on <strong>${formattedDueDate}</strong>.</p>
 <p>Please submit your payment as soon as possible. If you have already made this payment, please disregard this email.</p>
 <p>Thank you for your cooperation.</p>
-<p>Best regards,<br/>Property Management</p>`;
+<p>Best regards,<br/>Administration<br/>Campus Habitations</p>`;
+
+        // ── Build final subject & body based on language selection ───────────────
+        let subject, body;
+        if (language === 'fr') {
+            subject = subjectFr;
+            body = bodyFr;
+        } else if (language === 'en') {
+            subject = subjectEn;
+            body = bodyEn;
+        } else {
+            // 'both' — French first, then English
+            subject = `${subjectFr} / ${subjectEn}`;
+            body = `
+<div style="margin-bottom:24px;">
+  <p style="font-weight:700;font-size:13px;color:#555;border-bottom:1px solid #ddd;padding-bottom:6px;">🇫🇷 FRANÇAIS</p>
+  ${bodyFr}
+</div>
+<hr style="border:none;border-top:2px solid #e5e7eb;margin:24px 0;"/>
+<div>
+  <p style="font-weight:700;font-size:13px;color:#555;border-bottom:1px solid #ddd;padding-bottom:6px;">🇬🇧 ENGLISH</p>
+  ${bodyEn}
+</div>`;
+        }
 
         const sendResult = await EmailService.sendEmail(tenant.email, subject, body, {
             recipientId: tenant.id,
