@@ -1026,13 +1026,18 @@ exports.createLease = catchAsync(async (req, res, next) => {
                 });
             }
 
-            // --- NEW: Sync Move-In Dashboard ---
+        } // End of leaseData.status === 'Active' condition
+
+        // --- Sync Move-In Dashboard (runs for Active AND Scheduled leases) ---
+        // BUG FIX: Previously this was inside the Active-only block, causing
+        // future-dated (Scheduled) leases to never get a MoveIn record created.
+        if (leaseData.status === 'Active' || leaseData.status === 'Scheduled') {
             await workflowService.syncMoveInStatus(uId, {
                 leaseId: lease.id,
                 bedroomId: bId,
                 targetDate: lease.startDate
             }, tx);
-        } // End of leaseData.status === 'Active' condition
+        }
 
         // 3. Auto-create Invoices (Pro-rata + Past Months)
         const startRaw = new Date(startDate);
