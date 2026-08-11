@@ -144,21 +144,21 @@ exports.sendRentReminder = async (req, res) => {
 
         const balanceDue = parseFloat(invoice.amount || 0) - parseFloat(invoice.paidAmount || 0);
         const formattedAmount = balanceDue.toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const formattedDueDate = invoice.dueDate
-            ? new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-            : 'N/A';
+        // Set the rent due date to the first day of the month of the invoice's due date
+        const dueDateObj = invoice.dueDate ? new Date(invoice.dueDate) : new Date();
+        const firstDayOfMonth = new Date(dueDateObj.getFullYear(), dueDateObj.getMonth(), 1);
+        const formattedDueDate = firstDayOfMonth.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
         const EmailService = require('../../services/email.service');
         const tenantName = tenant.name || `${tenant.firstName || ''} ${tenant.lastName || ''}`.trim() || 'Tenant';
-        const invoiceNo = invoice.invoiceNo || 'N/A';
         const unitName = invoice.unit?.name || 'N/A';
 
         // ── French block ────────────────────────────────────────────────────────
         const subjectFr = `Rappel de loyer : Solde impayé pour l'unité ${unitName}`;
         const bodyFr = `
 <p>Cher(e) ${tenantName},</p>
-<p>Ceci est un rappel amical que vous avez un solde impayé de <strong>${formattedAmount} $</strong> pour l'unité <strong>${unitName}</strong> (Facture <strong>${invoiceNo}</strong>).</p>
-<p>Cette facture était due le <strong>${formattedDueDate}</strong>.</p>
+<p>Ceci est un rappel amical que vous avez un solde impayé de <strong>${formattedAmount} $</strong> pour l'unité <strong>${unitName}</strong>.</p>
+<p>Votre loyer était dû le <strong>${formattedDueDate}</strong>.</p>
 <p>Veuillez effectuer votre paiement dans les plus brefs délais. Si vous avez déjà effectué ce paiement, veuillez ignorer ce courriel.</p>
 <p>Merci de votre coopération.</p>
 <p>Cordialement,<br/>Administration<br/>Campus Habitations</p>`;
@@ -167,8 +167,8 @@ exports.sendRentReminder = async (req, res) => {
         const subjectEn = `Rent Reminder: Outstanding Dues for Unit ${unitName}`;
         const bodyEn = `
 <p>Dear ${tenantName},</p>
-<p>This is a friendly reminder that you have an outstanding balance of <strong>$${formattedAmount}</strong> for unit <strong>${unitName}</strong> (Invoice <strong>${invoiceNo}</strong>).</p>
-<p>This invoice was due on <strong>${formattedDueDate}</strong>.</p>
+<p>This is a friendly reminder that you have an outstanding balance of <strong>$${formattedAmount}</strong> for unit <strong>${unitName}</strong>.</p>
+<p>Your rent was due on <strong>${formattedDueDate}</strong>.</p>
 <p>Please submit your payment as soon as possible. If you have already made this payment, please disregard this email.</p>
 <p>Thank you for your cooperation.</p>
 <p>Best regards,<br/>Administration<br/>Campus Habitations</p>`;
