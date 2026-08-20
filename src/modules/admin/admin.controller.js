@@ -379,7 +379,48 @@ exports.getDashboardStats = async (req, res) => {
             unitId: inv.unitId
         }));
 
-        // 10. Reserved Units List
+        // 10. All Pending Deposits (System-Wide — all tenants, not just moved-out)
+        const allPendingDepositsRaw = await prisma.invoice.findMany({
+            where: {
+                paidAmount: { gt: 0 },
+                OR: [
+                    { category: 'SECURITY_DEPOSIT' },
+                    { description: { contains: 'Security Deposit' } }
+                ],
+                unit: unitFilter
+            },
+            include: {
+                tenant: {
+                    include: {
+                        refundAdjustments: true
+                    }
+                },
+                unit: { include: { property: true } },
+                lease: true
+            }
+        });
+
+        const allPendingDepositsList = allPendingDepositsRaw.filter(inv => {
+            const adjustments = inv.tenant?.refundAdjustments || [];
+            const hasFinishedOrCancelled = adjustments.some(adj =>
+                adj.unitId === inv.unitId && ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status)
+            );
+            return !hasFinishedOrCancelled;
+        }).map(inv => ({
+            id: inv.id,
+            tenantName: inv.tenant?.name || (inv.tenant?.firstName ? `${inv.tenant.firstName} ${inv.tenant.lastName || ''}`.trim() : 'Unknown'),
+            building: inv.unit?.property?.name || 'N/A',
+            unitNumber: inv.unit?.name || 'N/A',
+            depositAmount: parseFloat(inv.paidAmount || 0),
+            leaseExpiryDate: inv.lease?.endDate,
+            leaseStatus: inv.lease?.endDate ? (new Date(inv.lease.endDate) < today ? 'Moved Out' : 'Active') : 'No Lease',
+            tenantId: inv.tenantId,
+            unitId: inv.unitId
+        }));
+
+        const allPendingDepositsTotal = allPendingDepositsList.reduce((sum, item) => sum + item.depositAmount, 0);
+
+        // 11. Reserved Units List
         const [reservedUnits, reservedBedrooms] = await Promise.all([
             prisma.unit.findMany({
                 where: {
@@ -512,6 +553,8 @@ exports.getDashboardStats = async (req, res) => {
                 unauthorized: unauthorizedVehiclesCount
             },
             pendingRefunds: pendingRefundsList,
+            allPendingDepositsList,
+            allPendingDepositsTotal,
             reservedUnits: reservedUnitsList
         });
     } catch (error) {
