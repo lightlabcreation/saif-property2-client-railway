@@ -68,6 +68,7 @@ model User {
 
   // --- Move-In / Move-Out / Inspection ---
   inspections       Inspection[]  @relation("Inspector")
+  tenantInspections Inspection[]  @relation("TenantInspections")
   managedMoveOuts   MoveOut[]     @relation("Manager")
   overriddenMoveIns MoveIn[]      @relation("OverrideUser")
   unitHistory       UnitHistory[]
@@ -954,6 +955,7 @@ model Inspection {
   bedroomId             Int?
   leaseId               Int?
   inspectorId           Int?
+  tenantId              Int?
   tenantSignature       String?          @db.Text
   inspectorSignature    String?          @db.Text
   noDeficiencyConfirmed Boolean          @default(false)
@@ -966,6 +968,7 @@ model Inspection {
   unit      Unit                     @relation(fields: [unitId], references: [id])
   lease     Lease?                   @relation(fields: [leaseId], references: [id])
   inspector User?                    @relation("Inspector", fields: [inspectorId], references: [id])
+  tenant    User?                    @relation("TenantInspections", fields: [tenantId], references: [id])
   responses InspectionItemResponse[]
   tickets   Ticket[]
 

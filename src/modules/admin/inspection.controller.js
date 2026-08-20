@@ -70,7 +70,7 @@ const getTemplates = async (req, res) => {
 
 const createInspection = async (req, res) => {
     try {
-        const { templateId, unitId, leaseId, bedroomId, date, time } = req.body;
+        const { templateId, unitId, leaseId, bedroomId, date, time, tenantId } = req.body;
         const inspectorId = req.body.inspectorId ? parseInt(req.body.inspectorId) : (req.user?.id || 1);
 
         // Check if template exists
@@ -94,6 +94,7 @@ const createInspection = async (req, res) => {
                 leaseId,
                 bedroomId,
                 inspectorId,
+                tenantId: tenantId ? parseInt(tenantId) : null,
                 status: 'DRAFT'
             }
         });
@@ -240,6 +241,13 @@ const submitInspection = async (req, res) => {
 };
 
 const enrichInspectionTenant = async (inspection) => {
+    if (inspection?.tenant?.name) {
+        inspection.lease = {
+            ...inspection.lease,
+            tenant: inspection.tenant
+        };
+        return inspection;
+    }
     if (inspection?.lease?.tenant?.name) {
         return inspection;
     }
@@ -312,6 +320,7 @@ const getAllInspections = async (req, res) => {
                     unit: true,
                     lease: { include: { tenant: true } },
                     inspector: { select: { id: true, name: true } },
+                    tenant: true,
                     tickets: true
                 },
                 orderBy: { createdAt: 'desc' },
@@ -534,6 +543,7 @@ const downloadInspectionPDF = async (req, res) => {
                 unit: { include: { property: true } },
                 lease: { include: { tenant: true } },
                 inspector: { select: { id: true, name: true } },
+                tenant: true,
                 tickets: true
             }
         });
@@ -562,6 +572,7 @@ const getInspectionDetails = async (req, res) => {
                 unit: true,
                 lease: { include: { tenant: true } },
                 inspector: { select: { id: true, name: true, email: true } },
+                tenant: true,
                 tickets: true
             }
         });
