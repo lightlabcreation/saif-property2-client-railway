@@ -728,7 +728,7 @@ const getInspectionUnits = async (req, res) => {
             include: {
                 leases: {
                     where: { status: { in: ['Active', 'RESERVED', 'Pending'] } },
-                    include: { tenant: true },
+                    include: { tenant: true, residents: true },
                     orderBy: { createdAt: 'desc' }
                 },
                 reserved_by_user: true,
@@ -761,6 +761,10 @@ const getInspectionUnits = async (req, res) => {
                 unitNumber: u.unitNumber || u.name,
                 leaseId: activeLease?.id || null,
                 tenantName: activeLease?.tenant?.name || activeLease?.tenant?.firstName || u.reserved_by_user?.name || 'Vacant / Prospect',
+                tenants: activeLease ? [
+                    activeLease.tenant,
+                    ...(activeLease.residents || [])
+                ].filter(Boolean).filter((t, i, arr) => arr.findIndex(x => x.id === t.id) === i) : [],
                 unit: {
                     unitNumber: u.unitNumber || u.name,
                     propertyId: u.propertyId,
@@ -768,7 +772,8 @@ const getInspectionUnits = async (req, res) => {
                 },
                 lease: activeLease ? {
                     id: activeLease.id,
-                    tenant: activeLease.tenant
+                    tenant: activeLease.tenant,
+                    residents: activeLease.residents || []
                 } : null
             };
         });

@@ -726,8 +726,14 @@ const deleteInspection = async (req, res) => {
             // Get inspection details first to identify lease/template
             const inspection = await tx.inspection.findUnique({
                 where: { id: parseInt(id) },
-                include: { template: true }
+                include: { template: true, responses: true }
             });
+
+            // Delete InspectionMedia first (FK: InspectionMedia → InspectionItemResponse, no cascade)
+            if (inspection?.responses?.length > 0) {
+                const responseIds = inspection.responses.map(r => r.id);
+                await tx.inspectionMedia.deleteMany({ where: { responseId: { in: responseIds } } });
+            }
 
             // Delete responses
             await tx.inspectionItemResponse.deleteMany({ where: { inspectionId: parseInt(id) } });
