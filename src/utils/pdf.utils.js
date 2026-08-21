@@ -375,7 +375,12 @@ const generateInspectionPDF = async (inspection, res) => {
         // Find responses belonging to this room
         const roomResponses = responses.filter(r => {
             if (room.questions) {
-                return room.questions.some(q => q.text === r.question);
+                return room.questions.some(q => {
+                    if (q.id && r.questionId) {
+                        return String(q.id) === String(r.questionId);
+                    }
+                    return q.text === r.question;
+                });
             }
             return true; // Fallback for unstructured
         });

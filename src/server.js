@@ -42,9 +42,10 @@ async function startServer() {
             console.log(`✅ Recovered ${stuckCount.count} stuck campaigns.`);
         }
 
-        app.listen(PORT, () => {
+        const server = app.listen(PORT, () => {
             console.log(`🚀 Server running on port ${PORT}`);
         });
+        server.timeout = 300000; // 5 minutes
     } catch (error) {
         console.error('❌ Failed to start server:', error);
         process.exit(1);
