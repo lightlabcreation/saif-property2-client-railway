@@ -416,7 +416,7 @@ model Ticket {
   id             Int         @id @default(autoincrement())
   userId         Int
   subject        String
-  description    String
+  description    String      @db.Text
   priority       String      @default("Low")
   status         String      @default("Open")
   attachmentUrls String?     @db.Text
