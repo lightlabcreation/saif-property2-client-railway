@@ -40,7 +40,7 @@ router.post('/inspections/:id/submit', inspectionController.submitInspection);
 router.post('/inspections/:id/tickets', inspectionController.createTicket);
 router.delete('/inspections/:id/tickets/:ticketId', inspectionController.deleteTicket);
 router.put('/inspections/:id', inspectionController.updateInspection);
-router.delete('/inspections/:id', authorize('ADMIN'), inspectionController.deleteInspection);
+router.delete('/inspections/:id', inspectionController.deleteInspection);
 router.post('/inspections/upload-media', inspectionController.uploadInspectionMedia);
 
 // Unit History
