@@ -361,23 +361,28 @@ exports.getDashboardStats = async (req, res) => {
             }
         });
 
-        const pendingRefundsList = pendingRefundsRaw.filter(inv => {
+        const pendingRefundsList = pendingRefundsRaw.map(inv => {
             const adjustments = inv.tenant?.refundAdjustments || [];
-            // UNIT-AWARE: Only hide if a finished record exists for THIS specific unit
-            const hasFinishedOrCancelled = adjustments.some(adj =>
-                adj.unitId === inv.unitId && ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status)
-            );
-            return !hasFinishedOrCancelled;
-        }).map(inv => ({
-            id: inv.id,
-            tenantName: inv.tenant?.name || (inv.tenant?.firstName ? `${inv.tenant.firstName} ${inv.tenant.lastName || ''}`.trim() : 'Unknown'),
-            building: inv.unit?.property?.name || 'N/A',
-            unitNumber: inv.unit?.name || 'N/A',
-            depositAmount: parseFloat(inv.paidAmount || 0),
-            leaseExpiryDate: inv.lease?.endDate,
-            tenantId: inv.tenantId,
-            unitId: inv.unitId
-        }));
+            
+            // Calculate total applied (refunded or deducted) for this unit
+            const totalApplied = adjustments
+                .filter(adj => adj.unitId === inv.unitId && ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status))
+                .reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount) || 0), 0);
+            
+            const originalDeposit = parseFloat(inv.paidAmount || 0);
+            const remainingDeposit = Math.max(0, originalDeposit - totalApplied);
+            
+            return {
+                id: inv.id,
+                tenantName: inv.tenant?.name || (inv.tenant?.firstName ? `${inv.tenant.firstName} ${inv.tenant.lastName || ''}`.trim() : 'Unknown'),
+                building: inv.unit?.property?.name || 'N/A',
+                unitNumber: inv.unit?.name || 'N/A',
+                depositAmount: remainingDeposit,
+                leaseExpiryDate: inv.lease?.endDate,
+                tenantId: inv.tenantId,
+                unitId: inv.unitId
+            };
+        }).filter(item => item.depositAmount > 0);
 
         // 10. All Pending Deposits (System-Wide — all tenants, not just moved-out)
         const allPendingDepositsRaw = await prisma.invoice.findMany({
@@ -400,23 +405,29 @@ exports.getDashboardStats = async (req, res) => {
             }
         });
 
-        const allPendingDepositsList = allPendingDepositsRaw.filter(inv => {
+        const allPendingDepositsList = allPendingDepositsRaw.map(inv => {
             const adjustments = inv.tenant?.refundAdjustments || [];
-            const hasFinishedOrCancelled = adjustments.some(adj =>
-                adj.unitId === inv.unitId && ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status)
-            );
-            return !hasFinishedOrCancelled;
-        }).map(inv => ({
-            id: inv.id,
-            tenantName: inv.tenant?.name || (inv.tenant?.firstName ? `${inv.tenant.firstName} ${inv.tenant.lastName || ''}`.trim() : 'Unknown'),
-            building: inv.unit?.property?.name || 'N/A',
-            unitNumber: inv.unit?.name || 'N/A',
-            depositAmount: parseFloat(inv.paidAmount || 0),
-            leaseExpiryDate: inv.lease?.endDate,
-            leaseStatus: inv.lease?.endDate ? (new Date(inv.lease.endDate) < today ? 'Moved Out' : 'Active') : 'No Lease',
-            tenantId: inv.tenantId,
-            unitId: inv.unitId
-        }));
+            
+            // Calculate total applied (refunded or deducted) for this unit
+            const totalApplied = adjustments
+                .filter(adj => adj.unitId === inv.unitId && ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status))
+                .reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount) || 0), 0);
+            
+            const originalDeposit = parseFloat(inv.paidAmount || 0);
+            const remainingDeposit = Math.max(0, originalDeposit - totalApplied);
+            
+            return {
+                id: inv.id,
+                tenantName: inv.tenant?.name || (inv.tenant?.firstName ? `${inv.tenant.firstName} ${inv.tenant.lastName || ''}`.trim() : 'Unknown'),
+                building: inv.unit?.property?.name || 'N/A',
+                unitNumber: inv.unit?.name || 'N/A',
+                depositAmount: remainingDeposit,
+                leaseExpiryDate: inv.lease?.endDate,
+                leaseStatus: inv.lease?.endDate ? (new Date(inv.lease.endDate) < today ? 'Moved Out' : 'Active') : 'No Lease',
+                tenantId: inv.tenantId,
+                unitId: inv.unitId
+            };
+        }).filter(item => item.depositAmount > 0);
 
         const allPendingDepositsTotal = allPendingDepositsList.reduce((sum, item) => sum + item.depositAmount, 0);
 
