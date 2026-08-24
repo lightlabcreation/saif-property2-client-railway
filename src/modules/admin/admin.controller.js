@@ -406,7 +406,7 @@ exports.getDashboardStats = async (req, res) => {
                 tenantId: inv.tenantId,
                 unitId: inv.unitId
             };
-        }).filter(item => item.depositAmount > 0);
+        }).filter(item => item.depositAmount !== 0);
 
         // 10. All Pending Deposits (System-Wide — all tenants, not just moved-out)
         const allPendingDepositsRaw = await prisma.invoice.findMany({
@@ -466,7 +466,7 @@ exports.getDashboardStats = async (req, res) => {
                 tenantId: inv.tenantId,
                 unitId: inv.unitId
             };
-        }).filter(item => item.depositAmount > 0);
+        }).filter(item => item.depositAmount !== 0);
 
         const allPendingDepositsTotal = allPendingDepositsList.reduce((sum, item) => sum + item.depositAmount, 0);
 
