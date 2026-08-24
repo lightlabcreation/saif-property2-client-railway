@@ -364,6 +364,17 @@ exports.getDashboardStats = async (req, res) => {
         const pendingRefundsList = pendingRefundsRaw.map(inv => {
             const adjustments = inv.tenant?.refundAdjustments || [];
             
+            // If there's a finalized 'Security Deposit' adjustment, the workflow is 100% closed
+            const isClosed = adjustments.some(adj => 
+                adj.unitId === inv.unitId && 
+                adj.type === 'Security Deposit' && 
+                ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status)
+            );
+
+            if (isClosed) {
+                return { depositAmount: 0 }; // Will be filtered out
+            }
+
             // Calculate total applied (refunded or deducted) for this unit
             const totalApplied = adjustments
                 .filter(adj => adj.unitId === inv.unitId && ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status))
@@ -408,6 +419,17 @@ exports.getDashboardStats = async (req, res) => {
         const allPendingDepositsList = allPendingDepositsRaw.map(inv => {
             const adjustments = inv.tenant?.refundAdjustments || [];
             
+            // If there's a finalized 'Security Deposit' adjustment, the workflow is 100% closed
+            const isClosed = adjustments.some(adj => 
+                adj.unitId === inv.unitId && 
+                adj.type === 'Security Deposit' && 
+                ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status)
+            );
+
+            if (isClosed) {
+                return { depositAmount: 0 }; // Will be filtered out
+            }
+
             // Calculate total applied (refunded or deducted) for this unit
             const totalApplied = adjustments
                 .filter(adj => adj.unitId === inv.unitId && ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status))
