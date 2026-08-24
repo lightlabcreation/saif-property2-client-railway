@@ -273,7 +273,8 @@ exports.getRevenueStats = async (req, res) => {
                 }
             });
 
-            const allAllocations = await prisma.allocation.findMany({
+            const allAllocations = await prisma.payment.findMany({
+                where: { method: 'Security Deposit Allocation' },
                 include: { invoice: true }
             });
 
