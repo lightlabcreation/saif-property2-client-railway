@@ -256,6 +256,54 @@ exports.getRevenueStats = async (req, res) => {
                 })
         }));
 
+        // OVERRIDE: Calculate exact active deposit liability (like Refunds dashboard)
+        try {
+            const allPendingDepositsRaw = await prisma.invoice.findMany({
+                where: {
+                    paidAmount: { gt: 0 },
+                    OR: [
+                        { category: 'SECURITY_DEPOSIT' },
+                        { description: { contains: 'Security Deposit' } }
+                    ],
+                    unit: unitFilter
+                },
+                include: {
+                    tenant: { include: { refundAdjustments: true } },
+                    unit: true
+                }
+            });
+
+            const allAllocations = await prisma.allocation.findMany({
+                include: { invoice: true }
+            });
+
+            let activeDepositTotal = 0;
+            allPendingDepositsRaw.forEach(inv => {
+                const adjustments = inv.tenant?.refundAdjustments || [];
+                const tenantAllocations = allAllocations.filter(alloc => alloc.invoice?.tenantId === inv.tenantId);
+                
+                const isClosed = adjustments.some(adj => 
+                    adj.type === 'Security Deposit' && 
+                    ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status)
+                );
+
+                if (!isClosed) {
+                    const totalRefunded = adjustments
+                        .filter(adj => ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status))
+                        .reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount) || 0), 0);
+                    
+                    const totalAllocated = tenantAllocations.reduce((sum, alloc) => sum + Math.abs(parseFloat(alloc.amount) || 0), 0);
+                    
+                    const remaining = parseFloat(inv.paidAmount || 0) - (totalRefunded + totalAllocated);
+                    if (remaining !== 0) activeDepositTotal += remaining;
+                }
+            });
+
+            actualDeposit = activeDepositTotal;
+        } catch (err) {
+            console.error("Error calculating active deposits:", err);
+        }
+
         res.json({
             actualRevenue,
             actualRent,
