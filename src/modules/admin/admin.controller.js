@@ -372,11 +372,11 @@ exports.getDashboardStats = async (req, res) => {
 
         const pendingRefundsList = pendingRefundsRaw.map(inv => {
             const adjustments = inv.tenant?.refundAdjustments || [];
-            const tenantAllocations = allocations.filter(alloc => alloc.invoice?.tenantId === inv.tenantId && alloc.invoice?.unitId === inv.unitId);
+            const tenantAllocations = allocations.filter(alloc => alloc.invoice?.tenantId === inv.tenantId && true);
             
             // If there's a finalized 'Security Deposit' adjustment, the workflow is 100% closed
             const isClosed = adjustments.some(adj => 
-                adj.unitId === inv.unitId && 
+                
                 adj.type === 'Security Deposit' && 
                 ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status)
             );
@@ -387,14 +387,14 @@ exports.getDashboardStats = async (req, res) => {
 
             // Calculate total applied (refunded or deducted) for this unit
             const totalRefunded = adjustments
-                .filter(adj => adj.unitId === inv.unitId && ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status))
+                .filter(adj => ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status))
                 .reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount) || 0), 0);
             
             const totalAllocated = tenantAllocations.reduce((sum, alloc) => sum + Math.abs(parseFloat(alloc.amount) || 0), 0);
             const totalApplied = totalRefunded + totalAllocated;
             
             const originalDeposit = parseFloat(inv.paidAmount || 0);
-            const remainingDeposit = Math.max(0, originalDeposit - totalApplied);
+            const remainingDeposit = originalDeposit - totalApplied;
             
             return {
                 id: inv.id,
@@ -431,11 +431,11 @@ exports.getDashboardStats = async (req, res) => {
 
         const allPendingDepositsList = allPendingDepositsRaw.map(inv => {
             const adjustments = inv.tenant?.refundAdjustments || [];
-            const tenantAllocations = allocations.filter(alloc => alloc.invoice?.tenantId === inv.tenantId && alloc.invoice?.unitId === inv.unitId);
+            const tenantAllocations = allocations.filter(alloc => alloc.invoice?.tenantId === inv.tenantId && true);
             
             // If there's a finalized 'Security Deposit' adjustment, the workflow is 100% closed
             const isClosed = adjustments.some(adj => 
-                adj.unitId === inv.unitId && 
+                
                 adj.type === 'Security Deposit' && 
                 ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status)
             );
@@ -446,14 +446,14 @@ exports.getDashboardStats = async (req, res) => {
 
             // Calculate total applied (refunded or deducted) for this unit
             const totalRefunded = adjustments
-                .filter(adj => adj.unitId === inv.unitId && ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status))
+                .filter(adj => ['Completed', 'Issued', 'Cancelled', 'Received'].includes(adj.status))
                 .reduce((sum, adj) => sum + Math.abs(parseFloat(adj.amount) || 0), 0);
             
             const totalAllocated = tenantAllocations.reduce((sum, alloc) => sum + Math.abs(parseFloat(alloc.amount) || 0), 0);
             const totalApplied = totalRefunded + totalAllocated;
             
             const originalDeposit = parseFloat(inv.paidAmount || 0);
-            const remainingDeposit = Math.max(0, originalDeposit - totalApplied);
+            const remainingDeposit = originalDeposit - totalApplied;
             
             return {
                 id: inv.id,
