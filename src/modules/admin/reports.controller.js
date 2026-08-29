@@ -182,14 +182,14 @@ exports.getRentRoll = async (req, res) => {
                         include: {
                             leases: {
                                 where: { status: 'Active' },
-                                include: { tenant: true }
+                                include: { tenant: true, temp_unit: true }
                             },
                             reserved_by_user: true
                         }
                     },
                     leases: {
                         where: { status: 'Active' },
-                        include: { tenant: true }
+                        include: { tenant: true, temp_unit: true }
                     },
                     invoices: {
                         where: { status: { notIn: ['paid', 'draft'] } }
@@ -206,14 +206,14 @@ exports.getRentRoll = async (req, res) => {
                         include: {
                             leases: {
                                 where: { status: 'Active' },
-                                include: { tenant: true }
+                                include: { tenant: true, temp_unit: true }
                             },
                             reserved_by_user: true
                         }
                     },
                     leases: {
                         where: { status: 'Active' },
-                        include: { tenant: true }
+                        include: { tenant: true, temp_unit: true }
                     },
                     invoices: {
                         where: { status: { notIn: ['paid', 'draft'] } }
@@ -227,9 +227,16 @@ exports.getRentRoll = async (req, res) => {
         // (Actually, we can optimize by including invoices in the unit query)
 
         // Calculate Portfolio-wide Outstanding Balances (for Summary Cards)
+        
         const allUnpaidInvoices = await prisma.invoice.findMany({
             where: { status: { notIn: ['paid', 'draft'] } }
         });
+
+        const tempLeases = await prisma.lease.findMany({
+            where: { status: 'Active', temp_unit_id: { not: null } },
+            include: { tenant: true, unit: true }
+        });
+
 
         const unitTypeRates = await prisma.unitTypeRate.findMany();
 
@@ -294,6 +301,14 @@ exports.getRentRoll = async (req, res) => {
                     totalActualMonthlyRent += rent;
                     totalPotentialMonthlyRent += rent; // If occupied, potential is the actual rent
 
+                    
+                    let displayStatus = 'Occupied';
+                    let relUnit = '-';
+                    if (activeLease.temp_unit_id) {
+                        displayStatus = 'Temporarily elsewhere';
+                        relUnit = 'Temp Unit: ' + (activeLease.temp_unit?.unitNumber || activeLease.temp_unit?.name || activeLease.temp_unit_id);
+                    }
+
                     rentRollArray.push({
                         id: `unit-${u.id}`,
                         buildingName: u.property?.name || 'N/A',
@@ -308,7 +323,9 @@ exports.getRentRoll = async (req, res) => {
                         vacancyLoss: 0,
                         outstandingRent: unitRentBalance,
                         outstandingDeposit: unitDepositBalance,
-                        status: 'Occupied'
+                        status: displayStatus,
+                        relatedUnit: relUnit,
+                        isTempRow: false
                     });
                 } else {
                     const isReserved = u.reserved_flag;
@@ -321,28 +338,37 @@ exports.getRentRoll = async (req, res) => {
                     const displayStatus = isReserved ? 'Reserved' : 'Vacant';
                     const prospectName = u.reserved_by_user ? (u.reserved_by_user.name || `${u.reserved_by_user.firstName || ''} ${u.reserved_by_user.lastName || ''}`.trim()) : (u.status_note || 'Reserved');
 
-                    if (isReserved) {
+                    
+                    const asTempLease = tempLeases.find(l => l.temp_unit_id === u.id);
+                    if (asTempLease) {
+                        displayStatus = 'Temporarily Occupied';
+                        prospectName = (asTempLease.tenant?.name || asTempLease.tenant?.firstName + ' ' + asTempLease.tenant?.lastName) + ' (temporary)';
+                        // Does not generate rent or vacancy loss per specs
+                    } else if (isReserved) {
                         totalPotentialMonthlyRent += unitPotentialRent;
                     } else {
                         totalPotentialMonthlyRent += unitPotentialRent;
                         totalVacancyLoss += unitPotentialRent;
                     }
 
+                    
                     rentRollArray.push({
                         id: `unit-${u.id}`,
                         buildingName: u.property?.name || 'N/A',
                         leaseType: 'Full Unit',
                         unitNumber: u.unitNumber || u.name,
                         bedroomNumber: '-',
-                        tenantName: isReserved ? prospectName : '-',
+                        tenantName: isReserved || asTempLease ? prospectName : '-',
                         startDate: null,
                         endDate: null,
-                        monthlyRent: unitPotentialRent, 
-                        potentialRent: unitPotentialRent,
-                        vacancyLoss: isReserved ? 0 : unitPotentialRent,
+                        monthlyRent: asTempLease ? 0 : unitPotentialRent, 
+                        potentialRent: asTempLease ? 0 : unitPotentialRent,
+                        vacancyLoss: (isReserved || asTempLease) ? 0 : unitPotentialRent,
                         outstandingRent: unitRentBalance,
                         outstandingDeposit: unitDepositBalance,
-                        status: displayStatus
+                        status: displayStatus,
+                        relatedUnit: asTempLease ? 'Contracted Unit: ' + (asTempLease.unit?.unitNumber || asTempLease.unit?.name) : '-',
+                        isTempRow: !!asTempLease
                     });
                 }
             } else {
@@ -386,7 +412,9 @@ exports.getRentRoll = async (req, res) => {
                             vacancyLoss: totalUnitVacancyLoss,
                             outstandingRent: 0,
                             outstandingDeposit: 0,
-                            status: 'Vacant'
+                            status: 'Vacant',
+                            relatedUnit: '-',
+                            isTempRow: false
                         });
 
                         vacantUnits++;
@@ -434,7 +462,9 @@ exports.getRentRoll = async (req, res) => {
                                         vacancyLoss: 0,
                                         outstandingRent: bRentBalance,
                                         outstandingDeposit: bDepositBalance,
-                                        status: 'Occupied'
+                                        status: 'Occupied',
+                                        relatedUnit: '-',
+                                        isTempRow: false
                                     });
                                 } else if (bedroom.reserved_flag) {
                                     totalPotentialMonthlyRent += bPotentialRent;
@@ -454,7 +484,9 @@ exports.getRentRoll = async (req, res) => {
                                         vacancyLoss: 0,
                                         outstandingRent: 0,
                                         outstandingDeposit: 0,
-                                        status: 'Reserved'
+                                        status: 'Reserved',
+                                        relatedUnit: '-',
+                                        isTempRow: false
                                     });
                                 } else {
                                     // Occupied but no lease found (fallback)
@@ -474,7 +506,9 @@ exports.getRentRoll = async (req, res) => {
                                         vacancyLoss: 0,
                                         outstandingRent: 0,
                                         outstandingDeposit: 0,
-                                        status: 'Occupied'
+                                        status: 'Occupied',
+                                        relatedUnit: '-',
+                                        isTempRow: false
                                     });
                                 }
                             } else {
@@ -498,8 +532,10 @@ exports.getRentRoll = async (req, res) => {
                                     vacancyLoss: bPotentialRent,
                                     outstandingRent: 0,
                                     outstandingDeposit: 0,
-                                    status: 'Vacant'
-                                });
+                                    status: 'Vacant',
+                            relatedUnit: '-',
+                            isTempRow: false
+                        });
                             }
                         });
 

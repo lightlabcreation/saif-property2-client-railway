@@ -1351,3 +1351,128 @@ exports.sendCredentials = async (req, res) => {
         res.status(500).json({ message: 'Error sending credentials' });
     }
 };
+
+// POST /api/admin/leases/:id/assign-temporary-unit
+exports.assignTemporaryUnit = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const { temp_building_id, temp_unit_id, start_date, expected_end_date, reason, variance } = req.body;
+
+        const lease = await prisma.lease.findUnique({ where: { id } });
+        if (!lease) return res.status(404).json({ message: 'Lease not found' });
+
+        await prisma.$transaction(async (tx) => {
+            // Update Lease
+            await tx.lease.update({
+                where: { id },
+                data: {
+                    temp_building_id: temp_building_id ? parseInt(temp_building_id) : null,
+                    temp_unit_id: temp_unit_id ? parseInt(temp_unit_id) : null,
+                    temp_start_date: start_date ? new Date(start_date) : null,
+                    temp_expected_end_date: expected_end_date ? new Date(expected_end_date) : null,
+                    temp_reason: reason,
+                    temp_accommodation_variance: variance ? parseFloat(variance) : null
+                }
+            });
+
+            // Update Unit physical status
+            if (temp_unit_id) {
+                await tx.unit.update({
+                    where: { id: parseInt(temp_unit_id) },
+                    data: { physical_occupancy_status: 'Temporarily Occupied' }
+                });
+            }
+        });
+
+        res.json({ success: true, message: 'Temporary unit assigned successfully.' });
+    } catch (e) {
+        console.error('Assign Temporary Unit Error:', e);
+        res.status(500).json({ message: 'Error assigning temporary unit' });
+    }
+};
+
+// POST /api/admin/leases/:id/end-temporary-assignment
+exports.endTemporaryAssignment = async (req, res) => {
+    try {
+        const id = parseInt(req.params.id);
+        const lease = await prisma.lease.findUnique({ where: { id } });
+        if (!lease || !lease.temp_unit_id) {
+            return res.status(404).json({ message: 'Temporary assignment not found' });
+        }
+
+        await prisma.$transaction(async (tx) => {
+            // Clear lease temp fields
+            await tx.lease.update({
+                where: { id },
+                data: {
+                    temp_building_id: null,
+                    temp_unit_id: null,
+                    temp_start_date: null,
+                    temp_expected_end_date: null,
+                    temp_reason: null,
+                    temp_accommodation_variance: null
+                }
+            });
+
+            // Release the temp unit
+            await tx.unit.update({
+                where: { id: lease.temp_unit_id },
+                data: { physical_occupancy_status: 'Vacant' }
+            });
+        });
+
+        res.json({ success: true, message: 'Temporary assignment ended successfully.' });
+    } catch (e) {
+        console.error('End Temporary Assignment Error:', e);
+        res.status(500).json({ message: 'Error ending temporary assignment' });
+    }
+};
+
+// GET /api/admin/temporary-assignments
+exports.getTemporaryAssignments = async (req, res) => {
+    try {
+        const leases = await prisma.lease.findMany({
+            where: { temp_unit_id: { not: null } },
+            include: {
+                tenant: true,
+                unit: true,
+                temp_unit: true,
+                temp_building: true
+            },
+            orderBy: { temp_start_date: 'desc' }
+        });
+
+        const formatted = leases.map(l => {
+            const today = new Date();
+            const endDate = l.temp_expected_end_date ? new Date(l.temp_expected_end_date) : null;
+            let status = 'Active';
+
+            if (endDate) {
+                const diffTime = endDate - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                if (diffDays < 0) {
+                    status = 'Overdue';
+                } else if (diffDays <= 7) {
+                    status = 'Ending Soon';
+                }
+            }
+
+            return {
+                id: l.id,
+                tenantName: l.tenant?.name || `${l.tenant?.firstName || ''} ${l.tenant?.lastName || ''}`.trim(),
+                contractedUnit: l.unit?.name || l.unit?.unitNumber,
+                temporaryUnit: l.temp_unit?.name || l.temp_unit?.unitNumber,
+                startDate: l.temp_start_date,
+                expectedEndDate: l.temp_expected_end_date,
+                status: status,
+                leaseId: l.id
+            };
+        });
+
+        res.json({ success: true, data: formatted });
+    } catch (e) {
+        console.error('Get Temporary Assignments Error:', e);
+        res.status(500).json({ message: 'Error fetching temporary assignments' });
+    }
+};

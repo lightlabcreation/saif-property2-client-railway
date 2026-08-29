@@ -143,6 +143,7 @@ model Property {
   company          Company?          @relation("CompanyProperties", fields: [companyId], references: [id])
   units            Unit[]
   Ticket           Ticket[]
+  tempLeases       Lease[]           @relation("LeaseTempBuilding")
 
   @@index([companyId], map: "Property_companyId_fkey")
   @@map("property")
@@ -164,6 +165,7 @@ model Unit {
   classification String           @default("Completed") // New Construction vs Completed
   unit_type      UnitTypeCategory @default(COMPLETED)
   is_priority    Boolean          @default(false)
+  physical_occupancy_status String @default("Vacant") // NEW FOR TEMP ASSIGNMENT
 
   // --- NEW: Unit Readiness & Reservation Module ---
   unit_status         UnitStatus         @default(INACTIVE)
@@ -235,6 +237,7 @@ model Unit {
   unitHistory UnitHistory[]
   inspections Inspection[]
   Ticket      Ticket[]
+  tempLeases  Lease[] @relation("LeaseTempUnit") // NEW FOR TEMP ASSIGNMENT
 
   @@index([propertyId], map: "Unit_propertyId_fkey")
   @@index([unit_status])
@@ -294,6 +297,16 @@ model Lease {
   moveIn      MoveIn?
   moveOut     MoveOut?
   inspections Inspection[]
+
+  // --- Temporary Unit Assignment ---
+  temp_building_id            Int?
+  temp_unit_id                Int?
+  temp_start_date             DateTime?
+  temp_expected_end_date      DateTime?
+  temp_reason                 String?
+  temp_accommodation_variance Decimal?
+  temp_building               Property? @relation("LeaseTempBuilding", fields: [temp_building_id], references: [id])
+  temp_unit                   Unit?     @relation("LeaseTempUnit", fields: [temp_unit_id], references: [id])
 
   @@index([tenantId], map: "Lease_tenantId_fkey")
   @@index([unitId], map: "Lease_unitId_fkey")
