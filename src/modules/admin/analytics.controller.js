@@ -403,8 +403,9 @@ exports.getVacancyStats = async (req, res) => {
                 fullUnitCount++;
                 const activeLease = u.leases && u.leases.length > 0;
                 const isReserved = u.reserved_flag;
+                const isTempOccupied = u.physical_occupancy_status === 'Temporarily Occupied';
                 
-                if (activeLease || isReserved) {
+                if (activeLease || isReserved || isTempOccupied) {
                     occupied++;
                     buildingStats[propName].occupied++;
                 } else {
