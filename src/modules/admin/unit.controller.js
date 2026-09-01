@@ -49,6 +49,8 @@ exports.getAllUnits = async (req, res) => {
                     { reserved_flag: true }
                 ]
             });
+        } else if (statusFilter === 'Temporarily Occupied') {
+            whereConditions.push({ physical_occupancy_status: 'Temporarily Occupied' });
         } else if (statusFilter) {
             whereConditions.push({ status: statusFilter });
         }
