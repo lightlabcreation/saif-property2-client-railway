@@ -1368,8 +1368,8 @@ exports.assignTemporaryUnit = async (req, res) => {
                 data: {
                     temp_building_id: temp_building_id ? parseInt(temp_building_id) : null,
                     temp_unit_id: temp_unit_id ? parseInt(temp_unit_id) : null,
-                    temp_start_date: start_date ? new Date(start_date) : null,
-                    temp_expected_end_date: expected_end_date ? new Date(expected_end_date) : null,
+                    temp_start_date: start_date ? new Date(new Date(start_date).getUTCFullYear(), new Date(start_date).getUTCMonth(), new Date(start_date).getUTCDate()) : null,
+                    temp_expected_end_date: expected_end_date ? new Date(new Date(expected_end_date).getUTCFullYear(), new Date(expected_end_date).getUTCMonth(), new Date(expected_end_date).getUTCDate()) : null,
                     temp_reason: reason,
                     temp_accommodation_variance: variance ? parseFloat(variance) : null
                 }
