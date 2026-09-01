@@ -1414,10 +1414,13 @@ exports.endTemporaryAssignment = async (req, res) => {
                 }
             });
 
-            // Release the temp unit
+            // Release the temp unit and trigger turnover
             await tx.unit.update({
                 where: { id: lease.temp_unit_id },
-                data: { physical_occupancy_status: 'Vacant' }
+                data: { 
+                    physical_occupancy_status: 'Vacant',
+                    status: 'Preparation'
+                }
             });
         });
 
@@ -1466,7 +1469,14 @@ exports.getTemporaryAssignments = async (req, res) => {
                 startDate: l.temp_start_date,
                 expectedEndDate: l.temp_expected_end_date,
                 status: status,
-                leaseId: l.id
+                leaseId: l.id,
+                tenantId: l.tenantId,
+                unitId: l.unitId,
+                temp_unit_id: l.temp_unit_id,
+                temp_reason: l.temp_reason,
+                tenant: l.tenant,
+                unit: l.unit,
+                temp_unit: l.temp_unit
             };
         });
 

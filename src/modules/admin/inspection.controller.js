@@ -70,7 +70,8 @@ const getTemplates = async (req, res) => {
 
 const createInspection = async (req, res) => {
     try {
-        const { templateId, unitId, leaseId, bedroomId, date, time, tenantId } = req.body;
+        const { templateId, leaseId, bedroomId, date, time, tenantId, isTempUnit } = req.body;
+        let { unitId } = req.body;
         const inspectorId = req.body.inspectorId ? parseInt(req.body.inspectorId) : (req.user?.id || 1);
 
         // Check if template exists
@@ -80,6 +81,14 @@ const createInspection = async (req, res) => {
 
         const template = await prisma.inspectionTemplate.findUnique({ where: { id: parseInt(templateId) } });
         if (!template) return res.status(404).json({ success: false, message: 'Template not found' });
+
+        // If it's a temp unit inspection, pull the temp_unit_id from the lease
+        if (isTempUnit && leaseId) {
+            const lease = await prisma.lease.findUnique({ where: { id: parseInt(leaseId) } });
+            if (lease && lease.temp_unit_id) {
+                unitId = lease.temp_unit_id;
+            }
+        }
 
         // Lock template
         await prisma.inspectionTemplate.update({
