@@ -1,5 +1,10 @@
 const prisma = require('../../config/prisma');
 
+// Polyfill to allow JSON.stringify to serialize BigInts (like COUNT(*)) returned by Prisma queryRaw
+BigInt.prototype.toJSON = function () {
+    return Number(this);
+};
+
 const executeAiSql = async (req, res) => {
     try {
         const { sql } = req.body;
