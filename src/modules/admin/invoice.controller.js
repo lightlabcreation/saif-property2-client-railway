@@ -332,7 +332,7 @@ exports.runBatchInvoicing = async (req, res) => {
                     type: { in: ['INDIVIDUAL', 'COMPANY', 'RESIDENT'] }
                 }
             },
-            include: { unit: true, tenant: true }
+            include: { unit: true, tenant: true, lockers: { include: { locker: { include: { property: true } } } } }
         });
 
         for (const lease of activeLeases) {
@@ -383,8 +383,42 @@ exports.runBatchInvoicing = async (req, res) => {
                     continue;
                 }
 
+                // --- LOCKER BILLING (Req 8, 9, 10) ---
+                let lockerItems = [];
+                let totalLockerFees = 0;
+
+                for (const lockerRental of (lease.lockers || [])) {
+                    const lStart = new Date(lockerRental.startDate);
+                    const lEnd = new Date(lockerRental.endDate);
+                    const bStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                    const bEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+                    // Check locker is active during this billing month
+                    if (lEnd < bStart || lStart > bEnd) continue;
+
+                    // Proration
+                    const daysInMonth = bEnd.getDate();
+                    const effectiveStart = lStart > bStart ? lStart : bStart;
+                    const effectiveEnd = lEnd < bEnd ? lEnd : bEnd;
+                    const daysActive = Math.floor((effectiveEnd - effectiveStart) / (1000 * 60 * 60 * 24)) + 1;
+                    const lockerMonthlyRent = parseFloat(lockerRental.rentAmount) || 0;
+                    const proratedLocker = daysActive < daysInMonth
+                        ? parseFloat(((lockerMonthlyRent / daysInMonth) * daysActive).toFixed(2))
+                        : lockerMonthlyRent;
+
+                    if (proratedLocker <= 0) continue;
+
+                    lockerItems.push({
+                        description: `Locker - ${lockerRental.locker.property.name} / ${lockerRental.locker.lockerNumber}`,
+                        amount: proratedLocker
+                    });
+                    totalLockerFees += proratedLocker;
+                }
+
                 let attempts = 0;
                 let invoiceNo;
+                const finalTotalAmount = rentAmount + totalLockerFees;
+
                 while (attempts < 5) {
                     try {
                         invoiceNo = await generateInvoiceNo(prisma.invoice, 'INV-BATCH');
@@ -397,12 +431,15 @@ exports.runBatchInvoicing = async (req, res) => {
                                 leaseType: lease.unit.rentalMode,
                                 month: currentMonth,
                                 rent: rentAmount,
-                                serviceFees: 0,
-                                amount: rentAmount,
+                                serviceFees: totalLockerFees,
+                                amount: finalTotalAmount,
                                 paidAmount: 0,
-                                balanceDue: rentAmount,
+                                balanceDue: finalTotalAmount,
                                 status: 'sent',
-                                dueDate: dueDate
+                                dueDate: dueDate,
+                                items: lockerItems.length > 0 ? {
+                                    create: lockerItems
+                                } : undefined
                             }
                         });
                         break;
@@ -420,12 +457,12 @@ exports.runBatchInvoicing = async (req, res) => {
                 await prisma.rentRunLog.create({
                     data: {
                         rentRunId: rentRun.id,
-                        message: `[Success] Lease ID ${lease.id}: Invoice ${invoiceNo} generated.`
+                        message: `[Success] Lease ID ${lease.id}: Invoice ${invoiceNo} generated (Rent: $${rentAmount}, Lockers: $${totalLockerFees}).`
                     }
                 });
 
                 createdCount++;
-                totalAmount += rentAmount;
+                totalAmount += finalTotalAmount;
 
             } catch (innerError) {
                 console.error(`[Batch Run] Error processing Lease ID ${lease.id}:`, innerError);

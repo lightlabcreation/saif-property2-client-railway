@@ -127,6 +127,7 @@ router.post('/communication/bulk-delete', checkPermission('Communication', 'dele
 
 router.get('/analytics/revenue', analyticsController.getRevenueStats);
 router.get('/analytics/vacancy', analyticsController.getVacancyStats);
+router.get('/analytics/locker-charges', analyticsController.getLockerChargedReport);
 router.get('/reports/rent-roll', checkPermission('Rent Roll', 'view'), reportsController.getRentRoll);
 router.put('/reports/potential-rent', checkPermission('Reports', 'edit'), reportsController.updatePotentialRent);
 router.get('/reports', checkPermission('Reports', 'view'), reportsController.getReports);
@@ -188,5 +189,9 @@ router.delete('/ticket-assignees/:id', assigneeController.deleteAssignee);
 // Shuttle Management API Bridge
 const shuttleRoutes = require('./shuttle.routes');
 router.use('/shuttle', shuttleRoutes);
+
+// Locker Management API
+const lockerRoutes = require('./locker.routes');
+router.use('/lockers', lockerRoutes);
 
 module.exports = router;

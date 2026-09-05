@@ -492,3 +492,89 @@ exports.getVacancyStats = async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 };
+
+exports.getLockerChargedReport = async (req, res) => {
+    try {
+        const { month } = req.query;
+        if (!month) {
+            return res.status(400).json({ message: 'month query parameter is required (e.g. September 2026)' });
+        }
+
+        // Fetch all active leases to ensure we have a record for every tenant/unit,
+        // even those with $0 locker charges.
+        const allLeases = await prisma.lease.findMany({
+            where: {
+                status: { in: ['Active', 'DRAFT'] },
+                tenant: { type: { in: ['INDIVIDUAL', 'COMPANY', 'RESIDENT'] } }
+            },
+            include: {
+                tenant: { select: { id: true, firstName: true, lastName: true } },
+                unit: { include: { property: true } }
+            }
+        });
+
+        // Fetch all invoices for the month
+        const monthlyInvoices = await prisma.invoice.findMany({
+            where: { month },
+            include: { items: true }
+        });
+
+        const resultMap = {};
+
+        // Initialize all active leases with $0
+        allLeases.forEach(lease => {
+            const key = `${lease.id}-${lease.unitId}`;
+            resultMap[key] = {
+                leaseId: lease.id,
+                tenantName: lease.tenant ? `${lease.tenant.firstName || ''} ${lease.tenant.lastName || ''}`.trim() : 'Unknown',
+                unit: lease.unit?.name || lease.unit?.unitNumber || '-',
+                building: lease.unit?.property?.name || '-',
+                lockerCharged: 0,
+                lockers: []
+            };
+        });
+
+        // Add charges from invoices
+        monthlyInvoices.forEach(inv => {
+            const key = `${inv.leaseId}-${inv.unitId}`;
+            
+            // If the invoice is for a lease we didn't track (e.g. past lease), add it
+            if (!resultMap[key]) {
+                resultMap[key] = {
+                    leaseId: inv.leaseId,
+                    tenantName: 'Unknown (Past/Inactive)',
+                    unit: '-',
+                    building: '-',
+                    lockerCharged: 0,
+                    lockers: []
+                };
+            }
+
+            // Legacy standalone locker invoice check (from before we merged them into line items)
+            if (inv.description && inv.description.startsWith('Locker -')) {
+                resultMap[key].lockerCharged += parseFloat(inv.amount) || 0;
+                resultMap[key].lockers.push(inv.description);
+            }
+
+            // New line-item locker invoice check
+            if (inv.items && inv.items.length > 0) {
+                inv.items.forEach(item => {
+                    if (item.description && item.description.startsWith('Locker -')) {
+                        resultMap[key].lockerCharged += parseFloat(item.amount) || 0;
+                        resultMap[key].lockers.push(item.description);
+                    }
+                });
+            }
+        });
+
+        const report = Object.values(resultMap).map(r => ({
+            ...r,
+            lockerCharged: parseFloat(r.lockerCharged.toFixed(2))
+        }));
+
+        res.json({ month, report });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Server error' });
+    }
+};

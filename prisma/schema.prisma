@@ -144,6 +144,7 @@ model Property {
   units            Unit[]
   Ticket           Ticket[]
   tempLeases       Lease[]           @relation("LeaseTempBuilding")
+  lockers          Locker[]
 
   @@index([companyId], map: "Property_companyId_fkey")
   @@map("property")
@@ -297,6 +298,7 @@ model Lease {
   moveIn      MoveIn?
   moveOut     MoveOut?
   inspections Inspection[]
+  lockers     LockerRental[]
 
   // --- Temporary Unit Assignment ---
   temp_building_id            Int?
@@ -1143,3 +1145,27 @@ model TicketAssignee {
   @@map("ticket_assignee")
 }
 
+model Locker {
+  id           Int            @id @default(autoincrement())
+  buildingId   Int
+  lockerNumber String
+  status       String         @default("Available")
+  property     Property       @relation(fields: [buildingId], references: [id])
+  rentals      LockerRental[]
+
+  @@unique([buildingId, lockerNumber])
+  @@map("locker")
+}
+
+model LockerRental {
+  id         Int      @id @default(autoincrement())
+  leaseId    Int
+  lockerId   Int
+  rentAmount Decimal
+  startDate  DateTime
+  endDate    DateTime
+  lease      Lease    @relation(fields: [leaseId], references: [id])
+  locker     Locker   @relation(fields: [lockerId], references: [id])
+
+  @@map("locker_rental")
+}

@@ -465,6 +465,48 @@ exports.updateLease = catchAsync(async (req, res, next) => {
             });
         }
 
+        // 5. --- LOCKER RENTAL MANAGEMENT (Req 6) ---
+        if (req.body.lockers && Array.isArray(req.body.lockers)) {
+            for (const lockerData of req.body.lockers) {
+                if (lockerData.rentalId) {
+                    // Update existing locker rental (e.g. change end date)
+                    await tx.lockerRental.update({
+                        where: { id: parseInt(lockerData.rentalId) },
+                        data: {
+                            ...(lockerData.endDate && { endDate: workflowService.normalizeToNoon(lockerData.endDate) }),
+                            ...(lockerData.startDate && { startDate: workflowService.normalizeToNoon(lockerData.startDate) }),
+                            ...(lockerData.rentAmount !== undefined && { rentAmount: parseFloat(lockerData.rentAmount) })
+                        }
+                    });
+                } else if (lockerData.delete && lockerData.lockerId) {
+                    // Remove a locker rental from this lease
+                    await tx.lockerRental.deleteMany({
+                        where: { leaseId: id, lockerId: parseInt(lockerData.lockerId) }
+                    });
+                } else if (lockerData.lockerId) {
+                    // Add a new locker to an existing lease
+                    const lId = parseInt(lockerData.lockerId);
+                    const lStart = workflowService.normalizeToNoon(lockerData.startDate);
+                    const lEnd = workflowService.normalizeToNoon(lockerData.endDate);
+                    const overlapping = await tx.lockerRental.findFirst({
+                        where: { lockerId: lId, OR: [{ startDate: { lte: lEnd }, endDate: { gte: lStart } }] }
+                    });
+                    if (overlapping) {
+                        throw new AppError(`Locker is already rented during these dates and cannot be assigned.`, 400);
+                    }
+                    await tx.lockerRental.create({
+                        data: {
+                            leaseId: id,
+                            lockerId: lId,
+                            rentAmount: parseFloat(lockerData.rentAmount) || 0,
+                            startDate: lStart,
+                            endDate: lEnd
+                        }
+                    });
+                }
+            }
+        }
+
         return updatedLease;
     }, { maxWait: 10000, timeout: 30000 });
 
@@ -945,6 +987,38 @@ exports.createLease = catchAsync(async (req, res, next) => {
                 },
                 include: { unit: true, tenant: true }
             });
+        }
+
+        // --- LOCKER ASSIGNMENT ---
+        if (req.body.lockers && Array.isArray(req.body.lockers)) {
+            for (const lockerData of req.body.lockers) {
+                const lId = parseInt(lockerData.lockerId);
+                const lStart = workflowService.normalizeToNoon(lockerData.startDate);
+                const lEnd = workflowService.normalizeToNoon(lockerData.endDate);
+                
+                // Check overlaps
+                const overlapping = await tx.lockerRental.findFirst({
+                    where: {
+                        lockerId: lId,
+                        OR: [
+                            { startDate: { lte: lEnd }, endDate: { gte: lStart } }
+                        ]
+                    }
+                });
+                if (overlapping) {
+                    throw new AppError(`Locker is already rented during these dates and cannot be assigned.`, 400);
+                }
+                
+                await tx.lockerRental.create({
+                    data: {
+                        leaseId: lease.id,
+                        lockerId: lId,
+                        rentAmount: parseFloat(lockerData.rentAmount) || 0,
+                        startDate: lStart,
+                        endDate: lEnd
+                    }
+                });
+            }
         }
 
         // UPDATE STATUSES BASED ON LEASE TYPE ONLY IF ACTIVE
