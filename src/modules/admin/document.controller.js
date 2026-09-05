@@ -233,6 +233,15 @@ exports.uploadDocument = async (req, res) => {
 
         console.log('✅ Document created:', { id: doc.id, name: doc.name, leaseId: doc.leaseId, userId: doc.userId });
 
+        // Trigger Qdrant Processing if it's a PDF
+        if (fileUrl && fileUrl.toLowerCase().endsWith('.pdf')) {
+            const documentProcessor = require('../../services/documentProcessor.service');
+            const propId = legacyFields.propertyId || (doc.unit ? doc.unit.propertyId : null);
+            if (propId) {
+                documentProcessor.processAndSave(fileUrl, propId, type).catch(console.error);
+            }
+        }
+
         res.status(201).json(doc);
     } catch (e) {
         console.error('Upload Error:', e);

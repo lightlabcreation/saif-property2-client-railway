@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const fileUpload = require('express-fileupload');
 const os = require('os');
 const routes = require('./routes');
+const internalRoutes = require('./modules/internal/internal.routes');
 
 const app = express();
 
@@ -84,6 +85,22 @@ app.get("/", (req, res) => {
     message: "Property Saif Backend is Running 🚀",
   });
 });
+
+
+// Register Tenant Routes
+app.use('/api/tenant/auth', tenantAuthRoutes);
+app.use('/api/tenant/dashboard', tenantDashboardRoutes);
+app.use('/api/tenant/lease', tenantLeaseRoutes);
+app.use('/api/tenant/invoices', tenantInvoiceRoutes);
+app.use('/api/tenant/payments', tenantPaymentRoutes);
+app.use('/api/tenant/documents', tenantDocumentRoutes);
+app.use('/api/tenant/insurance', tenantInsuranceRoutes);
+app.use('/api/tenant/vehicles', tenantVehicleRoutes);
+app.use('/api/tenant/tickets', tenantTicketRoutes);
+app.use('/api/tenant/reports', tenantReportRoutes);
+
+// Register Internal Routes
+app.use('/api/internal', internalRoutes);
 
 
 // Routes
