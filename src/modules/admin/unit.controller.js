@@ -159,6 +159,8 @@ exports.getAllUnits = async (req, res) => {
                 buildingName: u.property.name,
                 status: displayStatus,
                 unit_status: u.unit_status,
+                physical_occupancy_status: u.physical_occupancy_status,
+                reserved_flag: u.reserved_flag,
                 bedrooms: u.bedrooms,
                 rentalMode: u.rentalMode,
                 activeLeaseCount: u.leases ? u.leases.length : 0,

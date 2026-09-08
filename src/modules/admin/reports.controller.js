@@ -335,8 +335,8 @@ exports.getRentRoll = async (req, res) => {
                         vacantUnits++;
                     }
                     
-                    const displayStatus = isReserved ? 'Reserved' : 'Vacant';
-                    const prospectName = u.reserved_by_user ? (u.reserved_by_user.name || `${u.reserved_by_user.firstName || ''} ${u.reserved_by_user.lastName || ''}`.trim()) : (u.status_note || 'Reserved');
+                    let displayStatus = isReserved ? 'Reserved' : 'Vacant';
+                    let prospectName = u.reserved_by_user ? (u.reserved_by_user.name || `${u.reserved_by_user.firstName || ''} ${u.reserved_by_user.lastName || ''}`.trim()) : (u.status_note || 'Reserved');
 
                     
                     const asTempLease = tempLeases.find(l => l.temp_unit_id === u.id);

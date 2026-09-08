@@ -1475,6 +1475,20 @@ exports.endTemporaryAssignment = async (req, res) => {
         }
 
         await prisma.$transaction(async (tx) => {
+            // First, copy to TemporaryAssignmentHistory
+            await tx.temporaryAssignmentHistory.create({
+                data: {
+                    leaseId: lease.id,
+                    tenantId: lease.tenantId,
+                    temp_building_id: lease.temp_building_id,
+                    temp_unit_id: lease.temp_unit_id,
+                    temp_start_date: lease.temp_start_date,
+                    temp_expected_end_date: lease.temp_expected_end_date,
+                    temp_actual_end_date: new Date(),
+                    temp_reason: lease.temp_reason
+                }
+            });
+
             // Clear lease temp fields
             await tx.lease.update({
                 where: { id },
@@ -1508,7 +1522,7 @@ exports.endTemporaryAssignment = async (req, res) => {
 // GET /api/admin/temporary-assignments
 exports.getTemporaryAssignments = async (req, res) => {
     try {
-        const leases = await prisma.lease.findMany({
+        const activeLeases = await prisma.lease.findMany({
             where: { temp_unit_id: { not: null } },
             include: {
                 tenant: true,
@@ -1519,7 +1533,17 @@ exports.getTemporaryAssignments = async (req, res) => {
             orderBy: { temp_start_date: 'desc' }
         });
 
-        const formatted = leases.map(l => {
+        const completedAssignments = await prisma.temporaryAssignmentHistory.findMany({
+            include: {
+                tenant: true,
+                lease: { include: { unit: true } },
+                temp_unit: true,
+                temp_building: true
+            },
+            orderBy: { temp_actual_end_date: 'desc' }
+        });
+
+        const activeFormatted = activeLeases.map(l => {
             const today = new Date();
             const endDate = l.temp_expected_end_date ? new Date(l.temp_expected_end_date) : null;
             let status = 'Active';
@@ -1538,23 +1562,48 @@ exports.getTemporaryAssignments = async (req, res) => {
             return {
                 id: l.id,
                 tenantName: l.tenant?.name || `${l.tenant?.firstName || ''} ${l.tenant?.lastName || ''}`.trim(),
-                contractedUnit: l.unit?.name || l.unit?.unitNumber,
-                temporaryUnit: l.temp_unit?.name || l.temp_unit?.unitNumber,
+                contractedUnit: l.unit?.name || l.unit?.unitNumber || l.unitId,
+                tempUnit: l.temp_unit?.name || l.temp_unit?.unitNumber || l.temp_unit_id,
+                tempBuilding: l.temp_building?.name || l.temp_building_id || 'N/A',
                 startDate: l.temp_start_date,
                 expectedEndDate: l.temp_expected_end_date,
-                status: status,
+                reason: l.temp_reason,
+                status,
+                isHistorical: false,
                 leaseId: l.id,
                 tenantId: l.tenantId,
                 unitId: l.unitId,
                 temp_unit_id: l.temp_unit_id,
-                temp_reason: l.temp_reason,
                 tenant: l.tenant,
                 unit: l.unit,
                 temp_unit: l.temp_unit
             };
         });
 
-        res.json({ success: true, data: formatted });
+        const completedFormatted = completedAssignments.map(c => {
+            return {
+                id: `history-${c.id}`,
+                tenantName: c.tenant?.name || `${c.tenant?.firstName || ''} ${c.tenant?.lastName || ''}`.trim(),
+                contractedUnit: c.lease?.unit?.name || c.lease?.unit?.unitNumber || c.lease?.unitId,
+                tempUnit: c.temp_unit?.name || c.temp_unit?.unitNumber || c.temp_unit_id,
+                tempBuilding: c.temp_building?.name || c.temp_building_id || 'N/A',
+                startDate: c.temp_start_date,
+                expectedEndDate: c.temp_expected_end_date,
+                actualEndDate: c.temp_actual_end_date,
+                reason: c.temp_reason,
+                status: 'Completed',
+                isHistorical: true,
+                leaseId: c.leaseId,
+                tenantId: c.tenantId,
+                unitId: c.lease?.unitId,
+                temp_unit_id: c.temp_unit_id,
+                tenant: c.tenant,
+                unit: c.lease?.unit,
+                temp_unit: c.temp_unit
+            };
+        });
+
+        res.json({ success: true, data: [...activeFormatted, ...completedFormatted] });
     } catch (e) {
         console.error('Get Temporary Assignments Error:', e);
         res.status(500).json({ message: 'Error fetching temporary assignments' });

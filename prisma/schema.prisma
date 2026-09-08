@@ -67,12 +67,13 @@ model User {
   shuttleUserId     String? // External ID for Morgan Shuttle App
 
   // --- Move-In / Move-Out / Inspection ---
-  inspections       Inspection[]  @relation("Inspector")
-  tenantInspections Inspection[]  @relation("TenantInspections")
-  managedMoveOuts   MoveOut[]     @relation("Manager")
-  overriddenMoveIns MoveIn[]      @relation("OverrideUser")
-  unitHistory       UnitHistory[]
-  seriesCreated     TemplateSeries[] @relation("SeriesCreator")
+  inspections                Inspection[]                 @relation("Inspector")
+  tenantInspections          Inspection[]                 @relation("TenantInspections")
+  managedMoveOuts            MoveOut[]                    @relation("Manager")
+  overriddenMoveIns          MoveIn[]                     @relation("OverrideUser")
+  unitHistory                UnitHistory[]
+  seriesCreated              TemplateSeries[]             @relation("SeriesCreator")
+  TemporaryAssignmentHistory TemporaryAssignmentHistory[]
 
   @@index([unitId], map: "user_unitId_fkey")
   @@index([buildingId], map: "user_buildingId_fkey")
@@ -124,49 +125,50 @@ model RefreshToken {
 }
 
 model Property {
-  id               Int               @id @default(autoincrement())
-  name             String
-  address          String
-  status           String            @default("Active")
-  companyId        Int?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  city             String?
-  civicNumber      String?
-  postalCode       String?
-  province         String?
-  street           String?
-  documents        Document[]
-  maintenanceTasks MaintenanceTask[]
-  owners           User[]            @relation("ownerproperties")
-  tenants          User[]            @relation("BuildingTenants")
-  company          Company?          @relation("CompanyProperties", fields: [companyId], references: [id])
-  units            Unit[]
-  Ticket           Ticket[]
-  tempLeases       Lease[]           @relation("LeaseTempBuilding")
-  lockers          Locker[]
+  id                         Int                          @id @default(autoincrement())
+  name                       String
+  address                    String
+  status                     String                       @default("Active")
+  companyId                  Int?
+  createdAt                  DateTime                     @default(now())
+  updatedAt                  DateTime                     @updatedAt
+  city                       String?
+  civicNumber                String?
+  postalCode                 String?
+  province                   String?
+  street                     String?
+  documents                  Document[]
+  maintenanceTasks           MaintenanceTask[]
+  owners                     User[]                       @relation("ownerproperties")
+  tenants                    User[]                       @relation("BuildingTenants")
+  company                    Company?                     @relation("CompanyProperties", fields: [companyId], references: [id])
+  units                      Unit[]
+  Ticket                     Ticket[]
+  tempLeases                 Lease[]                      @relation("LeaseTempBuilding")
+  lockers                    Locker[]
+  TemporaryAssignmentHistory TemporaryAssignmentHistory[]
 
   @@index([companyId], map: "Property_companyId_fkey")
   @@map("property")
 }
 
 model Unit {
-  id             Int              @id @default(autoincrement())
-  name           String
-  propertyId     Int
-  status         String           @default("Vacant") // Existing field (Keep for compatibility)
-  bedrooms       Int              @default(1)
-  rentAmount     Decimal          @default(0.00)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  rentalMode     RentalMode       @default(FULL_UNIT)
-  floor          Int?
-  unitNumber     String?
-  unitType       String?
-  classification String           @default("Completed") // New Construction vs Completed
-  unit_type      UnitTypeCategory @default(COMPLETED)
-  is_priority    Boolean          @default(false)
-  physical_occupancy_status String @default("Vacant") // NEW FOR TEMP ASSIGNMENT
+  id                        Int              @id @default(autoincrement())
+  name                      String
+  propertyId                Int
+  status                    String           @default("Vacant") // Existing field (Keep for compatibility)
+  bedrooms                  Int              @default(1)
+  rentAmount                Decimal          @default(0.00)
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @updatedAt
+  rentalMode                RentalMode       @default(FULL_UNIT)
+  floor                     Int?
+  unitNumber                String?
+  unitType                  String?
+  classification            String           @default("Completed") // New Construction vs Completed
+  unit_type                 UnitTypeCategory @default(COMPLETED)
+  is_priority               Boolean          @default(false)
+  physical_occupancy_status String           @default("Vacant") // NEW FOR TEMP ASSIGNMENT
 
   // --- NEW: Unit Readiness & Reservation Module ---
   unit_status         UnitStatus         @default(INACTIVE)
@@ -232,13 +234,14 @@ model Unit {
   property          Property           @relation(fields: [propertyId], references: [id], map: "Unit_propertyId_fkey")
 
   // --- Move-In / Move-Out / Inspection ---
-  moveOuts    MoveOut[]
-  moveIns     MoveIn[]
-  prepTasks   UnitPrepTask[]
-  unitHistory UnitHistory[]
-  inspections Inspection[]
-  Ticket      Ticket[]
-  tempLeases  Lease[] @relation("LeaseTempUnit") // NEW FOR TEMP ASSIGNMENT
+  moveOuts                   MoveOut[]
+  moveIns                    MoveIn[]
+  prepTasks                  UnitPrepTask[]
+  unitHistory                UnitHistory[]
+  inspections                Inspection[]
+  Ticket                     Ticket[]
+  tempLeases                 Lease[]                      @relation("LeaseTempUnit") // NEW FOR TEMP ASSIGNMENT
+  TemporaryAssignmentHistory TemporaryAssignmentHistory[]
 
   @@index([propertyId], map: "Unit_propertyId_fkey")
   @@index([unit_status])
@@ -307,8 +310,9 @@ model Lease {
   temp_expected_end_date      DateTime?
   temp_reason                 String?
   temp_accommodation_variance Decimal?
-  temp_building               Property? @relation("LeaseTempBuilding", fields: [temp_building_id], references: [id])
-  temp_unit                   Unit?     @relation("LeaseTempUnit", fields: [temp_unit_id], references: [id])
+  temp_building               Property?                    @relation("LeaseTempBuilding", fields: [temp_building_id], references: [id])
+  temp_unit                   Unit?                        @relation("LeaseTempUnit", fields: [temp_unit_id], references: [id])
+  TemporaryAssignmentHistory  TemporaryAssignmentHistory[]
 
   @@index([tenantId], map: "Lease_tenantId_fkey")
   @@index([unitId], map: "Lease_unitId_fkey")
@@ -428,35 +432,35 @@ model CommunicationLog {
 }
 
 model Ticket {
-  id             Int         @id @default(autoincrement())
-  userId         Int
-  subject        String
-  description    String      @db.Text
-  priority       String      @default("Low")
-  status         String      @default("Open")
-  attachmentUrls String?     @db.Text
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  resolvedAt     DateTime?
-  propertyId     Int?
-  unitId         Int?
-  category       String?
-  type           String?     @default("REPAIR")
-  source         String? // MOVE_OUT_INSPECTION, MOVE_IN_INSPECTION, MAINTENANCE
-  isRequired     Boolean     @default(false)
-  inspectionId   Int?
-  assignedToId   Int?
+  id                   Int            @id @default(autoincrement())
+  userId               Int
+  subject              String
+  description          String         @db.Text
+  priority             String         @default("Low")
+  status               String         @default("Open")
+  attachmentUrls       String?        @db.Text
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  resolvedAt           DateTime?
+  propertyId           Int?
+  unitId               Int?
+  category             String?
+  type                 String?        @default("REPAIR")
+  source               String? // MOVE_OUT_INSPECTION, MOVE_IN_INSPECTION, MAINTENANCE
+  isRequired           Boolean        @default(false)
+  inspectionId         Int?
+  assignedToId         Int?
   assignedToNameString String?
-  assignedById   Int?
-  assignedAt     DateTime?
-  completedAt    DateTime?
-  assignedTo     User?       @relation("TicketAssignee", fields: [assignedToId], references: [id])
-  assignedBy     User?       @relation("TicketAssigner", fields: [assignedById], references: [id])
-  user           User        @relation(fields: [userId], references: [id], map: "Ticket_userId_fkey")
-  inspection     Inspection? @relation(fields: [inspectionId], references: [id])
-  property       Property?   @relation(fields: [propertyId], references: [id])
-  unit           Unit?       @relation(fields: [unitId], references: [id])
-  blockingStatus BlockingStatus @default(NON_BLOCKING)
+  assignedById         Int?
+  assignedAt           DateTime?
+  completedAt          DateTime?
+  assignedTo           User?          @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  assignedBy           User?          @relation("TicketAssigner", fields: [assignedById], references: [id])
+  user                 User           @relation(fields: [userId], references: [id], map: "Ticket_userId_fkey")
+  inspection           Inspection?    @relation(fields: [inspectionId], references: [id])
+  property             Property?      @relation(fields: [propertyId], references: [id])
+  unit                 Unit?          @relation(fields: [unitId], references: [id])
+  blockingStatus       BlockingStatus @default(NON_BLOCKING)
 
   @@index([userId], map: "Ticket_userId_fkey")
   @@map("ticket")
@@ -898,27 +902,27 @@ model AuditLog {
 // --- PHASE 1: Move-In / Move-Out / Inspection Models ---
 
 model MoveOut {
-  id              Int           @id @default(autoincrement())
-  leaseId         Int           @unique
-  unitId          Int
-  bedroomId       Int?
-  status          MoveOutStatus @default(PENDING)
-  targetDate      DateTime?
-  actualDate      DateTime?
-  
+  id         Int           @id @default(autoincrement())
+  leaseId    Int           @unique
+  unitId     Int
+  bedroomId  Int?
+  status     MoveOutStatus @default(PENDING)
+  targetDate DateTime?
+  actualDate DateTime?
+
   // Scheduling Rule 2.3 & 2.4
-  visualDate      DateTime?
-  visualTime      String?
-  finalDate       DateTime?
-  finalTime       String?
-  
-  visualInspectionId  Int?
-  finalInspectionId   Int?
-  
-  managerApproved Boolean       @default(false)
+  visualDate DateTime?
+  visualTime String?
+  finalDate  DateTime?
+  finalTime  String?
+
+  visualInspectionId Int?
+  finalInspectionId  Int?
+
+  managerApproved Boolean  @default(false)
   managerId       Int?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   lease   Lease @relation(fields: [leaseId], references: [id])
   unit    Unit  @relation(fields: [unitId], references: [id])
@@ -991,17 +995,17 @@ model Inspection {
 }
 
 model InspectionItemResponse {
-  id           Int               @id @default(autoincrement())
-  inspectionId Int
-  question     String
-  response     String
-  notes        String?           @db.Text
-  annotation   String?           @db.Text
-  photoUrl     String?           @db.Text
-  annotatedPhotoUrl String?      @db.Text
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  media        InspectionMedia[]
+  id                Int               @id @default(autoincrement())
+  inspectionId      Int
+  question          String
+  response          String
+  notes             String?           @db.Text
+  annotation        String?           @db.Text
+  photoUrl          String?           @db.Text
+  annotatedPhotoUrl String?           @db.Text
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  media             InspectionMedia[]
 
   inspection Inspection @relation(fields: [inspectionId], references: [id])
 
@@ -1040,15 +1044,15 @@ model UnitPrepTask {
 }
 
 model UnitHistory {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   unitId    Int
   bedroomId Int?
   userId    Int
   action    String
   oldStatus String?
   newStatus String?
-  timestamp DateTime @default(now())
-  createdAt DateTime @default(now())
+  timestamp DateTime  @default(now())
+  createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
   unit Unit @relation(fields: [unitId], references: [id])
@@ -1098,6 +1102,7 @@ enum PrepTaskStage {
   CLEANING_COMPLETED
   UNIT_READY
 }
+
 model TemplateSeries {
   id          Int                @id @default(autoincrement())
   name        String
@@ -1113,12 +1118,12 @@ model TemplateSeries {
 }
 
 model TemplateResponse {
-  id        Int            @id @default(autoincrement())
-  seriesId  Int
-  label     String
-  color     String         @default("indigo")
-  order     Int            @default(0)
-  series    TemplateSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  id       Int            @id @default(autoincrement())
+  seriesId Int
+  label    String
+  color    String         @default("indigo")
+  order    Int            @default(0)
+  series   TemplateSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
 
   @@index([seriesId])
   @@map("templateresponse")
@@ -1168,4 +1173,24 @@ model LockerRental {
   locker     Locker   @relation(fields: [lockerId], references: [id])
 
   @@map("locker_rental")
+}
+
+model TemporaryAssignmentHistory {
+  id                     Int       @id @default(autoincrement())
+  leaseId                Int
+  tenantId               Int
+  temp_building_id       Int?
+  temp_unit_id           Int?
+  temp_start_date        DateTime?
+  temp_expected_end_date DateTime?
+  temp_actual_end_date   DateTime?
+  temp_reason            String?
+  createdAt              DateTime  @default(now())
+
+  lease         Lease     @relation(fields: [leaseId], references: [id])
+  tenant        User      @relation(fields: [tenantId], references: [id])
+  temp_building Property? @relation(fields: [temp_building_id], references: [id])
+  temp_unit     Unit?     @relation(fields: [temp_unit_id], references: [id])
+
+  @@map("temporaryassignmenthistory")
 }

@@ -307,7 +307,11 @@ exports.getTenantById = async (req, res) => {
             where: { id: tenantId },
             include: {
                 leases: {
-                    include: { unit: { include: { property: true } } }
+                    include: { 
+                        unit: { include: { property: true } },
+                        temp_unit: true,
+                        temp_building: true
+                    }
                 },
                 insurances: true,
                 documents: true, // Direct ownership documents

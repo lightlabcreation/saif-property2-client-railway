@@ -109,7 +109,7 @@ const createInspection = async (req, res) => {
         });
 
         // WORKFLOW SYNC: Update Move-Out status to IN_PROGRESS when inspection starts
-        if (template.type === 'VISUAL' || template.type === 'MOVE_OUT') {
+        if ((template.type === 'VISUAL' || template.type === 'MOVE_OUT') && inspection.leaseId) {
             const moveOut = await prisma.moveOut.findFirst({
                 where: { 
                     leaseId: inspection.leaseId,
