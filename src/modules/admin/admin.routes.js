@@ -96,9 +96,9 @@ router.get('/leases', checkPermission('Leases', 'view'), leaseController.getLeas
 router.delete('/leases/:id', checkPermission('Leases', 'delete'), leaseController.deleteLease);
 router.put('/leases/:id', checkPermission('Leases', 'edit'), leaseController.updateLease);
 router.get('/leases/:id/download', checkPermission('Leases', 'view'), leaseController.downloadLeasePDF);
-router.post('/leases/:id/assign-temporary-unit', checkPermission('Leases', 'edit'), leaseController.assignTemporaryUnit);
-router.post('/leases/:id/end-temporary-assignment', checkPermission('Leases', 'edit'), leaseController.endTemporaryAssignment);
-router.get('/temporary-assignments', checkPermission('Leases', 'view'), leaseController.getTemporaryAssignments);
+router.post('/leases/:id/assign-temporary-unit', checkPermission('Temporary Assignment', 'add'), leaseController.assignTemporaryUnit);
+router.post('/leases/:id/end-temporary-assignment', checkPermission('Temporary Assignment', 'edit'), leaseController.endTemporaryAssignment);
+router.get('/temporary-assignments', checkPermission('Temporary Assignment', 'view'), leaseController.getTemporaryAssignments);
 
 router.get('/insurance/compliance', checkPermission('Insurance', 'view'), insuranceController.getComplianceDashboard);
 router.post('/insurance', checkPermission('Insurance', 'add'), insuranceController.createInsurance);
