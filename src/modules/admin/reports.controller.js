@@ -600,3 +600,188 @@ exports.updatePotentialRent = async (req, res) => {
         res.status(500).json({ message: 'Server error updating potential rent' });
     }
 };
+
+// GET /api/admin/reports/monthly-rent-collections
+exports.getMonthlyRentCollectionsReport = async (req, res) => {
+    try {
+        const { startMonth, endMonth, buildingId, format = 'csv' } = req.query;
+        if (!startMonth || !endMonth) {
+            return res.status(400).json({ message: 'startMonth and endMonth are required (YYYY-MM)' });
+        }
+
+        const exceljs = require('exceljs');
+        const startParts = startMonth.split('-');
+        const endParts = endMonth.split('-');
+        
+        const startYear = parseInt(startParts[0]);
+        const startMonthIndex = parseInt(startParts[1]) - 1; 
+        
+        const endYear = parseInt(endParts[0]);
+        const endMonthIndex = parseInt(endParts[1]) - 1;
+        
+        const startDate = new Date(startYear, startMonthIndex, 1);
+        const endDate = new Date(endYear, endMonthIndex + 1, 0, 23, 59, 59, 999);
+
+        const leases = await prisma.lease.findMany({
+            include: {
+                tenant: true,
+                unit: { include: { property: true } },
+                bedroom: true
+            }
+        });
+
+        const monthsToReport = [];
+        let current = new Date(startYear, startMonthIndex, 1);
+        while (current <= endDate) {
+            monthsToReport.push(new Date(current));
+            current.setMonth(current.getMonth() + 1);
+        }
+
+        const reportData = [];
+
+        const invoices = await prisma.invoice.findMany({
+            include: { payments: true, items: true }
+        });
+
+        const deposits = await prisma.refundAdjustment.findMany();
+        
+        for (const monthDate of monthsToReport) {
+            const mYear = monthDate.getFullYear();
+            const mMonth = monthDate.getMonth();
+            const mMonthStr = monthDate.toLocaleString('en-US', { month: 'long' }) + ' ' + mYear;
+            
+            const monthStart = new Date(mYear, mMonth, 1);
+            const monthEnd = new Date(mYear, mMonth + 1, 0, 23, 59, 59, 999);
+
+            for (const lease of leases) {
+                const lStart = lease.startDate ? new Date(lease.startDate) : null;
+                const lEnd = lease.endDate ? new Date(lease.endDate) : null;
+                
+                if (!lStart) continue;
+                
+                if (lStart <= monthEnd && (!lEnd || lEnd >= monthStart)) {
+                    const leaseBuildingId = lease.unit?.propertyId;
+                    if (buildingId && buildingId !== 'all' && leaseBuildingId != buildingId) {
+                        continue;
+                    }
+
+                    const tenantId = lease.tenantId;
+                    const shortMonthStr = monthDate.toLocaleString('en-US', { month: 'short' }) + " '" + mYear.toString().slice(-2);
+                    
+                    const applicableInvoices = invoices.filter(inv => 
+                        inv.tenantId === tenantId && 
+                        (inv.leaseId === lease.id || inv.unitId === lease.unitId) &&
+                        (
+                            inv.month === shortMonthStr || 
+                            (inv.dueDate && new Date(inv.dueDate) >= monthStart && new Date(inv.dueDate) <= monthEnd) ||
+                            (new Date(inv.createdAt) >= monthStart && new Date(inv.createdAt) <= monthEnd)
+                        )
+                    );
+
+                    let rentCharged = 0;
+                    let rentCollected = 0;
+                    let lockerCharged = 0;
+                    let otherCharged = 0;
+
+                    applicableInvoices.forEach(inv => {
+                        if (inv.category === 'RENT') {
+                            rentCharged += parseFloat(inv.amount || 0);
+                            inv.payments.forEach(p => {
+                                rentCollected += parseFloat(p.amount || 0);
+                            });
+                        } else if (inv.category === 'SERVICE' && (inv.description || '').toLowerCase().includes('locker')) {
+                            lockerCharged += parseFloat(inv.amount || 0);
+                        } else {
+                            if (inv.category !== 'SECURITY_DEPOSIT') {
+                                otherCharged += parseFloat(inv.amount || 0);
+                            }
+                        }
+                    });
+
+                    let depositCollected = 0;
+                    invoices.filter(inv => inv.tenantId === tenantId && (inv.category === 'SECURITY_DEPOSIT' || (inv.description || '').toLowerCase().includes('deposit'))).forEach(inv => {
+                        inv.payments.forEach(p => {
+                            const pDate = new Date(p.date);
+                            if (pDate >= monthStart && pDate <= monthEnd) {
+                                depositCollected += parseFloat(p.amount || 0);
+                            }
+                        });
+                    });
+
+                    let depositRefunded = 0;
+                    deposits.filter(d => d.tenantId === tenantId && d.type === 'Refund' && d.status === 'Completed').forEach(d => {
+                        const dDate = new Date(d.date);
+                        if (dDate >= monthStart && dDate <= monthEnd) {
+                            depositRefunded += parseFloat(d.amount || 0);
+                        }
+                    });
+
+                    const depositTotal = depositCollected - depositRefunded;
+
+                    const unitNumber = lease.leaseType === 'BEDROOM' ? 
+                        (lease.bedroom ? `${lease.unit.name}-${lease.bedroom.bedroomNumber}` : lease.unit.name) :
+                        lease.unit.name;
+                    
+                    const tenantName = lease.tenant ? (lease.tenant.companyName || `${lease.tenant.firstName || ''} ${lease.tenant.lastName || ''}`.trim() || lease.tenant.name || '-') : '-';
+                    const isExpired = (lEnd && lEnd < new Date()) ? 'Yes' : 'No';
+
+                    reportData.push({
+                        Month: mMonthStr,
+                        'Unit Number': unitNumber,
+                        'Rent Charged': rentCharged,
+                        'Rent Collected': rentCollected,
+                        'Deposit': depositTotal,
+                        'Lead Tenant Name': tenantName,
+                        'Unit Type': lease.unit?.unitType || lease.unit?.unit_type || '-',
+                        'Parking Charged': 0,
+                        'Internet Charged': 0,
+                        'Locker Charged': lockerCharged,
+                        'Other Charges': otherCharged,
+                        'Lease Start': lStart ? lStart.toISOString().split('T')[0] : '-',
+                        'Lease End': lEnd ? lEnd.toISOString().split('T')[0] : '-',
+                        'Expired': isExpired
+                    });
+                }
+            }
+        }
+
+        const workbook = new exceljs.Workbook();
+        const sheet = workbook.addWorksheet('Rent & Collections');
+        
+        sheet.columns = [
+            { header: 'Month', key: 'Month', width: 20 },
+            { header: 'Unit Number', key: 'Unit Number', width: 15 },
+            { header: 'Rent Charged', key: 'Rent Charged', width: 15 },
+            { header: 'Rent Collected', key: 'Rent Collected', width: 15 },
+            { header: 'Deposit', key: 'Deposit', width: 15 },
+            { header: 'Lead Tenant Name', key: 'Lead Tenant Name', width: 25 },
+            { header: 'Unit Type', key: 'Unit Type', width: 15 },
+            { header: 'Parking Charged', key: 'Parking Charged', width: 15 },
+            { header: 'Internet Charged', key: 'Internet Charged', width: 15 },
+            { header: 'Locker Charged', key: 'Locker Charged', width: 15 },
+            { header: 'Other Charges', key: 'Other Charges', width: 15 },
+            { header: 'Lease Start', key: 'Lease Start', width: 15 },
+            { header: 'Lease End', key: 'Lease End', width: 15 },
+            { header: 'Expired', key: 'Expired', width: 10 }
+        ];
+
+        reportData.forEach(row => {
+            sheet.addRow(row);
+        });
+
+        if (format === 'csv') {
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', 'attachment; filename="monthly-rent-collections.csv"');
+            await workbook.csv.write(res);
+        } else {
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename="monthly-rent-collections.xlsx"');
+            await workbook.xlsx.write(res);
+        }
+        res.end();
+
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ message: 'Server error generating Monthly Rent Collections Report' });
+    }
+};
