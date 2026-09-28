@@ -1073,7 +1073,7 @@ exports.getTenantHistory = async (req, res) => {
             description: e.subject || 'Email Communication',
             linkType: 'Email',
             linkId: e.id,
-            content: e.content
+            content: e.content ? e.content.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ') : null
         }));
 
         // 2. SMS / Chat
