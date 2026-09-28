@@ -314,6 +314,19 @@ exports.getUnitDetails = async (req, res) => {
         });
 
         const activeLease = unit.leases.find(l => l.status === 'Active');
+        if (activeLease && activeLease.tenant && activeLease.tenant.type !== 'COMPANY' && activeLease.tenant.type !== 'Company') {
+            const exists = occupants.find(o => o.id === activeLease.tenant.id);
+            if (!exists) {
+                occupants.unshift({
+                    id: activeLease.tenant.id,
+                    name: activeLease.tenant.name,
+                    firstName: activeLease.tenant.firstName,
+                    email: activeLease.tenant.email,
+                    phone: activeLease.tenant.phone,
+                    bedroomId: activeLease.bedroomId
+                });
+            }
+        }
         res.json({
             ...unit,
             activeLease: activeLease ? { tenantName: activeLease.tenant.name, startDate: activeLease.startDate, endDate: activeLease.endDate, amount: activeLease.monthlyRent } : null,
