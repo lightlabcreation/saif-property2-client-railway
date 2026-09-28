@@ -1054,3 +1054,113 @@ exports.sendInvite = catchAsync(async (req, res, next) => {
         }
     });
 });
+
+// GET /api/admin/tenants/:id/history
+exports.getTenantHistory = async (req, res) => {
+    try {
+        const tenantId = parseInt(req.params.id);
+        const history = [];
+
+        // 1. Emails
+        const emails = await prisma.communicationLog.findMany({
+            where: { recipientId: tenantId, channel: 'Email' },
+            orderBy: { timestamp: 'desc' }
+        });
+        emails.forEach(e => history.push({
+            id: `email-${e.id}`,
+            type: e.eventType === 'INBOUND_EMAIL' ? 'Email Received' : 'Email Sent',
+            date: e.timestamp,
+            description: e.subject || 'Email Communication',
+            linkType: 'Email',
+            linkId: e.id,
+            content: e.content
+        }));
+
+        // 2. SMS / Chat
+        const messages = await prisma.message.findMany({
+            where: { OR: [{ senderId: tenantId }, { receiverId: tenantId }] },
+            orderBy: { createdAt: 'desc' }
+        });
+        messages.forEach(m => history.push({
+            id: `msg-${m.id}`,
+            type: m.senderId === tenantId ? (m.sentVia === 'sms' ? 'SMS Received' : 'Message Received') : (m.sentVia === 'sms' ? 'SMS Sent' : 'Message Sent'),
+            date: m.createdAt,
+            description: m.content ? (m.content.substring(0, 50) + (m.content.length > 50 ? '...' : '')) : 'Message',
+            linkType: 'Message',
+            linkId: m.id
+        }));
+
+        // 3. Tickets
+        const tickets = await prisma.ticket.findMany({
+            where: { userId: tenantId },
+            orderBy: { createdAt: 'desc' }
+        });
+        tickets.forEach(t => {
+            history.push({
+                id: `ticket-opened-${t.id}`,
+                type: 'Ticket Opened',
+                date: t.createdAt,
+                description: t.subject,
+                linkType: 'Ticket',
+                linkId: t.id
+            });
+            if (t.status === 'Completed' || t.status === 'Closed' || t.resolvedAt) {
+                history.push({
+                    id: `ticket-closed-${t.id}`,
+                    type: 'Ticket Completed',
+                    date: t.resolvedAt || t.updatedAt,
+                    description: t.subject,
+                    linkType: 'Ticket',
+                    linkId: t.id
+                });
+            }
+        });
+
+        // 4. Documents
+        const documents = await prisma.document.findMany({
+            where: { userId: tenantId },
+            orderBy: { createdAt: 'desc' }
+        });
+        documents.forEach(d => history.push({
+            id: `doc-${d.id}`,
+            type: 'Document Added',
+            date: d.createdAt,
+            description: d.name,
+            linkType: 'Document',
+            linkId: d.id
+        }));
+
+        // 5. Inspections
+        // Assuming inspections have a leaseId, we need to get tenant's leases first
+        const leases = await prisma.lease.findMany({
+            where: { tenantId: tenantId },
+            select: { id: true }
+        });
+        const leaseIds = leases.map(l => l.id);
+        
+        if (leaseIds.length > 0) {
+            const inspections = await prisma.inspection.findMany({
+                where: { leaseId: { in: leaseIds } },
+                orderBy: { createdAt: 'desc' }
+            });
+            inspections.forEach(i => {
+                history.push({
+                    id: `insp-${i.id}`,
+                    type: i.type === 'MoveIn' ? 'Move-In Inspection Completed' : (i.type === 'MoveOut' ? 'Move-Out Inspection Completed' : 'Inspection Completed'),
+                    date: i.completedAt || i.createdAt,
+                    description: `Inspection for Lease #${i.leaseId}`,
+                    linkType: 'Inspection',
+                    linkId: i.id
+                });
+            });
+        }
+
+        // Sort globally by date descending
+        history.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        res.json(history);
+    } catch (error) {
+        console.error('Error fetching tenant history:', error);
+        res.status(500).json({ error: 'Failed to fetch history' });
+    }
+};

@@ -637,3 +637,141 @@ exports.getVacantBedrooms = async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 };
+
+// GET /api/admin/units/:id/history
+exports.getUnitHistory = async (req, res) => {
+    try {
+        const unitId = parseInt(req.params.id);
+        const history = [];
+
+        // 1. Leases (Historical and current tenants)
+        const leases = await prisma.lease.findMany({
+            where: { unitId: unitId },
+            include: { tenant: true },
+            orderBy: { startDate: 'desc' }
+        });
+        
+        const tenantIds = [];
+        leases.forEach(l => {
+            if (l.tenantId) tenantIds.push(l.tenantId);
+            history.push({
+                id: `lease-${l.id}`,
+                type: 'Lease Created',
+                date: l.createdAt,
+                description: `Lease for ${l.tenant?.name || 'Tenant'} (${l.startDate ? l.startDate.toISOString().split('T')[0] : 'N/A'} - ${l.endDate ? l.endDate.toISOString().split('T')[0] : 'Active'})`,
+                linkType: 'Lease',
+                linkId: l.id
+            });
+        });
+
+        // 2. Inspections
+        const inspections = await prisma.inspection.findMany({
+            where: { unitId: unitId },
+            orderBy: { createdAt: 'desc' }
+        });
+        inspections.forEach(i => history.push({
+            id: `insp-${i.id}`,
+            type: i.type === 'MoveIn' ? 'Move-In Inspection Completed' : (i.type === 'MoveOut' ? 'Move-Out Inspection Completed' : 'Inspection Completed'),
+            date: i.completedAt || i.createdAt,
+            description: `Inspection for Unit`,
+            linkType: 'Inspection',
+            linkId: i.id
+        }));
+
+        // 3. Tickets
+        const tickets = await prisma.ticket.findMany({
+            where: { unitId: unitId },
+            orderBy: { createdAt: 'desc' }
+        });
+        tickets.forEach(t => {
+            history.push({
+                id: `ticket-opened-${t.id}`,
+                type: 'Ticket Opened',
+                date: t.createdAt,
+                description: t.subject,
+                linkType: 'Ticket',
+                linkId: t.id
+            });
+            if (t.status === 'Completed' || t.status === 'Closed' || t.resolvedAt) {
+                history.push({
+                    id: `ticket-closed-${t.id}`,
+                    type: 'Ticket Completed',
+                    date: t.resolvedAt || t.updatedAt,
+                    description: t.subject,
+                    linkType: 'Ticket',
+                    linkId: t.id
+                });
+            }
+        });
+
+        // 4. Documents
+        const documents = await prisma.document.findMany({
+            where: { unitId: unitId },
+            orderBy: { createdAt: 'desc' }
+        });
+        documents.forEach(d => history.push({
+            id: `doc-${d.id}`,
+            type: 'Document Added',
+            date: d.createdAt,
+            description: d.name,
+            linkType: 'Document',
+            linkId: d.id
+        }));
+
+        // 5. Communications for tenants during their lease
+        if (tenantIds.length > 0) {
+            // Because filtering exactly by lease dates in JS is intensive, we'll fetch all and filter in memory
+            const emails = await prisma.communicationLog.findMany({
+                where: { recipientId: { in: tenantIds }, channel: 'Email' },
+                orderBy: { timestamp: 'desc' }
+            });
+            emails.forEach(e => {
+                // Find if this email falls in any active lease period for this tenant on this unit
+                const validLease = leases.find(l => l.tenantId === e.recipientId && 
+                    (!l.startDate || e.timestamp >= l.startDate) && 
+                    (!l.endDate || e.timestamp <= l.endDate));
+                if (validLease) {
+                    history.push({
+                        id: `email-${e.id}`,
+                        type: e.eventType === 'INBOUND_EMAIL' ? 'Email Received' : 'Email Sent',
+                        date: e.timestamp,
+                        description: e.subject || 'Email Communication',
+                        linkType: 'Email',
+                        linkId: e.id,
+                        content: e.content
+                    });
+                }
+            });
+
+            const messages = await prisma.message.findMany({
+                where: { OR: [{ senderId: { in: tenantIds } }, { receiverId: { in: tenantIds } }] },
+                orderBy: { createdAt: 'desc' }
+            });
+            messages.forEach(m => {
+                const isTenantSender = tenantIds.includes(m.senderId);
+                const tId = isTenantSender ? m.senderId : m.receiverId;
+                const validLease = leases.find(l => l.tenantId === tId && 
+                    (!l.startDate || m.createdAt >= l.startDate) && 
+                    (!l.endDate || m.createdAt <= l.endDate));
+                
+                if (validLease) {
+                    history.push({
+                        id: `msg-${m.id}`,
+                        type: isTenantSender ? (m.sentVia === 'sms' ? 'SMS Received' : 'Message Received') : (m.sentVia === 'sms' ? 'SMS Sent' : 'Message Sent'),
+                        date: m.createdAt,
+                        description: m.content ? (m.content.substring(0, 50) + (m.content.length > 50 ? '...' : '')) : 'Message',
+                        linkType: 'Message',
+                        linkId: m.id
+                    });
+                }
+            });
+        }
+
+        history.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        res.json(history);
+    } catch (error) {
+        console.error('Error fetching unit history:', error);
+        res.status(500).json({ error: 'Failed to fetch history' });
+    }
+};

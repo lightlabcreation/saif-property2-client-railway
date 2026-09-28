@@ -7,6 +7,7 @@ const { checkPermission, checkAnyPermission } = require('../../middlewares/permi
 router.get('/', checkAnyPermission(['Tenant List', 'Shuttle'], 'view'), tenantController.getAllTenants);
 router.get('/:id', checkPermission('Tenant List', 'view'), tenantController.getTenantById);
 router.get('/:id/tickets', checkPermission('Tenant List', 'view'), tenantController.getTenantTickets);
+router.get('/:id/history', checkPermission('Tenant List', 'view'), tenantController.getTenantHistory);
 router.post('/', checkPermission('Tenant List', 'add'), tenantController.createTenant);
 router.put('/:id', checkPermission('Tenant List', 'edit'), tenantController.updateTenant);
 router.post('/:id/send-invite', checkPermission('Tenant List', 'edit'), tenantController.sendInvite);

@@ -11,6 +11,7 @@ router.get('/types', checkPermission('Units', 'view'), unitController.getUnitTyp
 router.post('/types', checkPermission('Units', 'edit'), unitController.createUnitType);
 router.delete('/types/:id', checkPermission('Units', 'edit'), unitController.deleteUnitType);
 router.get('/bedrooms/vacant', checkPermission('Units', 'view'), unitController.getVacantBedrooms);
+router.get('/:id/history', checkPermission('Units', 'view'), unitController.getUnitHistory);
 router.get('/:id', checkPermission('Units', 'view'), unitController.getUnitDetails);
 router.put('/:id', checkPermission('Units', 'edit'), unitController.updateUnit);
 router.delete('/:id', checkPermission('Units', 'delete'), unitController.deleteUnit);

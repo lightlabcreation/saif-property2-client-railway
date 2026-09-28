@@ -32,6 +32,9 @@ const twilioWebhookController = require('./modules/communication/twilio.webhook.
 router.post('/webhooks/twilio/sms/incoming', twilioWebhookController.handleIncomingSMS);
 router.post('/webhooks/twilio/sms/status', twilioWebhookController.handleSMSStatusCallback);
 
+const emailWebhookController = require('./modules/communication/email.webhook.controller');
+router.post('/webhooks/email/incoming', emailWebhookController.handleIncomingEmail);
+
 // 🔒 PROTECTED MODULES (All routes below this line require authentication)
 router.use('/admin/tenants', authenticate, tenantRoutes);
 router.use('/admin/leases', authenticate, leaseRoutes);
