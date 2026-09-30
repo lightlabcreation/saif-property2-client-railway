@@ -667,12 +667,14 @@ exports.getMonthlyRentCollectionsReport = async (req, res) => {
 
                     const tenantId = lease.tenantId;
                     const shortMonthStr = monthDate.toLocaleString('en-US', { month: 'short' }) + " '" + mYear.toString().slice(-2);
+                    const longMonthStr = monthDate.toLocaleString('en-US', { month: 'long' }) + " " + mYear;
                     
                     const applicableInvoices = invoices.filter(inv => 
                         inv.tenantId === tenantId && 
                         (inv.leaseId === lease.id || inv.unitId === lease.unitId) &&
                         (
                             inv.month === shortMonthStr || 
+                            inv.month === longMonthStr ||
                             (inv.dueDate && new Date(inv.dueDate) >= monthStart && new Date(inv.dueDate) <= monthEnd) ||
                             (new Date(inv.createdAt) >= monthStart && new Date(inv.createdAt) <= monthEnd)
                         )
