@@ -688,9 +688,7 @@ exports.getMonthlyRentCollectionsReport = async (req, res) => {
                     applicableInvoices.forEach(inv => {
                         if (inv.category === 'RENT') {
                             rentCharged += parseFloat(inv.amount || 0);
-                            inv.payments.forEach(p => {
-                                rentCollected += parseFloat(p.amount || 0);
-                            });
+                            rentCollected += parseFloat(inv.paidAmount || 0);
                         } else if (inv.category === 'SERVICE' && (inv.description || '').toLowerCase().includes('locker')) {
                             lockerCharged += parseFloat(inv.amount || 0);
                         } else {
