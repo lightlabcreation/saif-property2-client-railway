@@ -279,7 +279,7 @@ const generateDashboardPDF = (title, data, res) => {
         }
 
         const unitName = item.unit?.name || item.unit?.unitNumber || 'N/A';
-        const tenantName = item.lease?.tenant?.name || 'N/A';
+        const tenantName = item.lease?.tenant?.name || item.manualTenantName || 'N/A';
         const status = item.status || 'N/A';
         const date = item.lease?.startDate || item.lease?.endDate || item.createdAt;
 
@@ -359,7 +359,7 @@ const generateInspectionPDF = async (inspection, res) => {
     currentY += 35;
     drawInfoRow('Property', inspection.unit?.property?.name, 50, currentY, 80);
     drawInfoRow('Unit', inspection.unit?.name, 140, currentY, 200);
-    drawInfoRow('Tenant', inspection.lease?.tenant?.name, 350, currentY, 80);
+    drawInfoRow('Tenant', inspection.lease?.tenant?.name || inspection.manualTenantName, 350, currentY, 80);
     drawInfoRow('Inspector', inspection.inspector?.name, 450, currentY, 80);
 
     currentY += 45;
