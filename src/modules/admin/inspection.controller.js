@@ -70,7 +70,7 @@ const getTemplates = async (req, res) => {
 
 const createInspection = async (req, res) => {
     try {
-        const { templateId, leaseId, bedroomId, date, time, tenantId, isTempUnit } = req.body;
+        const { templateId, leaseId, bedroomId, date, time, tenantId, isTempUnit, manualTenantName } = req.body;
         let { unitId } = req.body;
         const inspectorId = req.body.inspectorId ? parseInt(req.body.inspectorId) : (req.user?.id || 1);
 
@@ -104,6 +104,7 @@ const createInspection = async (req, res) => {
                 bedroomId,
                 inspectorId,
                 tenantId: tenantId ? parseInt(tenantId) : null,
+                manualTenantName: manualTenantName || null,
                 status: 'DRAFT'
             }
         });

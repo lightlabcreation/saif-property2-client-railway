@@ -975,6 +975,7 @@ model Inspection {
   leaseId               Int?
   inspectorId           Int?
   tenantId              Int?
+    manualTenantName      String?          @db.Text
   tenantSignature       String?          @db.Text
   inspectorSignature    String?          @db.Text
   noDeficiencyConfirmed Boolean          @default(false)
