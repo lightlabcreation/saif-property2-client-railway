@@ -42,12 +42,21 @@ class EmailService {
             // Append signature if it's HTML and not skipped
             const finalBody = isHtml ? `${content}${globalSignature ? `<br/><br/>${globalSignature}` : ''}` : `${content}${globalSignature ? `\n\n${globalSignature.replace(/<[^>]*>?/gm, '')}` : ''}`;
 
+            // Define the dynamic Reply-To address for Property 2
+            const replyToEmail = recipientId 
+                ? `reply+property2_tenant${recipientId}@reply.campushabitations.com` 
+                : `reply+property2_general@reply.campushabitations.com`;
+
             const data = {
                 personalizations: [{
                     to: [{ email: to }]
                 }],
                 from: {
                     email: fromEmail,
+                    name: senderName
+                },
+                reply_to: {
+                    email: replyToEmail,
                     name: senderName
                 },
                 subject: subject,

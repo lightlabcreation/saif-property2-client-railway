@@ -225,6 +225,12 @@ exports.getHistory = async (req, res) => {
             where.templateId = parseInt(templateId);
         }
 
+        if (req.query.direction === 'inbound') {
+            where.eventType = 'INBOUND_EMAIL';
+        } else if (req.query.direction === 'outbound') {
+            where.eventType = { not: 'INBOUND_EMAIL' };
+        }
+
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
