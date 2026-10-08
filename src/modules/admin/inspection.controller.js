@@ -392,6 +392,9 @@ const updateInspection = async (req, res) => {
         if (req.body.inspectorSignature !== undefined) {
             updates.inspectorSignature = req.body.inspectorSignature;
         }
+        if (req.body.manualTenantName !== undefined) {
+            updates.manualTenantName = req.body.manualTenantName;
+        }
 
         await prisma.$transaction(async (tx) => {
             // Update main inspection record
