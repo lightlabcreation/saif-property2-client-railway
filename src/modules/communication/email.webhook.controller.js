@@ -9,7 +9,8 @@ exports.handleIncomingEmail = async (req, res) => {
         // SendGrid sends data as multipart/form-data. The fields include 'from', 'text', 'subject', etc.
         // For this example, we assume middleware like multer is used if needed, or req.body contains the fields.
         const fromHeader = req.body.from || '';
-        const textBody = req.body.text || req.body.html || '';
+        // Prioritize HTML to preserve line breaks and formatting in UI
+        const textBody = req.body.html || req.body.text || '';
         const subject = req.body.subject || 'Incoming Reply';
 
         // Extract email address from 'from' string (e.g. "John Doe <john@example.com>")
