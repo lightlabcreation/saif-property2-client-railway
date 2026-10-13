@@ -27,8 +27,9 @@ exports.handleIncomingSMS = async (req, res) => {
             ]
         });
 
-        // Smart Match: Prefer Active Tenant/Owner > Active Other > Anyone else
+        // Smart Match: Prefer Active Tenant/Owner > Active Coworker > Active Other > Anyone else
         let sender = users.find(u => u.isActive && (u.role === 'TENANT' || u.role === 'OWNER')) 
+                  || users.find(u => u.isActive && u.role === 'COWORKER')
                   || users.find(u => u.isActive)
                   || users[0];
 
@@ -45,7 +46,7 @@ exports.handleIncomingSMS = async (req, res) => {
 
         // Find which admin to assign this to. 
         // Strategy: Find the last interaction (sent or received) between any staff and this sender.
-        // Fallback: Use the first admin found in the system.
+        // Fallback: Use the first admin found in the system (avoiding self-assignment).
         const lastInteraction = await prisma.message.findFirst({
             where: {
                 OR: [
@@ -64,11 +65,19 @@ exports.handleIncomingSMS = async (req, res) => {
 
         let assignedAdminId;
         if (lastInteraction) {
-            assignedAdminId = ['ADMIN', 'COWORKER'].includes(lastInteraction.sender?.role) 
-                ? lastInteraction.senderId 
-                : lastInteraction.receiverId;
-        } else {
+            const otherPersonId = lastInteraction.senderId === sender.id 
+                ? lastInteraction.receiverId 
+                : lastInteraction.senderId;
+            assignedAdminId = otherPersonId;
+        }
+
+        if (!assignedAdminId || assignedAdminId === sender.id) {
             const firstAdmin = await prisma.user.findFirst({
+                where: { 
+                    role: 'ADMIN',
+                    id: { not: sender.id }
+                }
+            }) || await prisma.user.findFirst({
                 where: { role: 'ADMIN' }
             });
             assignedAdminId = firstAdmin ? firstAdmin.id : null;
