@@ -59,7 +59,8 @@ exports.getLeaseHistory = async (req, res) => {
                         OR: [
                             { name: { contains: search } },
                             { firstName: { contains: search } },
-                            { lastName: { contains: search } }
+                            { lastName: { contains: search } },
+                            { companyName: { contains: search } }
                         ]
                     }
                 },
@@ -122,6 +123,9 @@ exports.getLeaseHistory = async (req, res) => {
                 unit: l.unit.unitNumber || l.unit.name,
                 bedroom: l.bedroom ? l.bedroom.bedroomNumber : '-',
                 tenant: allTenants, // Show all occupants
+                companyName: l.tenant?.companyName || null,
+                tenantType: l.tenant?.type || 'INDIVIDUAL',
+                responsiblePerson: primaryName,
                 primaryTenantName: primaryName,
                 coTenants: residentNames,
                 tenantFirstName: l.tenant?.firstName || (l.tenant?.name ? l.tenant.name.split(' ')[0] : ''),
@@ -275,7 +279,7 @@ exports.deleteLease = async (req, res) => {
 // PUT /api/admin/leases/:id
 exports.updateLease = catchAsync(async (req, res, next) => {
     const id = parseInt(req.params.id);
-    const { monthlyRent, startDate, endDate, firstName, lastName } = req.body;
+    const { monthlyRent, startDate, endDate, firstName, lastName, companyName } = req.body;
 
     const result = await prisma.$transaction(async (tx) => {
         // 0. Fetch existing lease to get tenantId
@@ -286,15 +290,23 @@ exports.updateLease = catchAsync(async (req, res, next) => {
 
         if (!existingLease) throw new AppError('Lease not found', 404);
 
-        // 1. Update Tenant Name if provided
+        // 1. Update Tenant Name / Company if provided
+        const tenantUpdateData = {};
         if (firstName !== undefined || lastName !== undefined) {
+            const fName = firstName !== undefined ? firstName : existingLease.tenant.firstName;
+            const lName = lastName !== undefined ? lastName : existingLease.tenant.lastName;
+            tenantUpdateData.firstName = fName;
+            tenantUpdateData.lastName = lName;
+            tenantUpdateData.name = `${fName || ''} ${lName || ''}`.trim();
+        }
+        if (companyName !== undefined) {
+            tenantUpdateData.companyName = companyName ? companyName.trim() : null;
+        }
+
+        if (Object.keys(tenantUpdateData).length > 0) {
             await tx.user.update({
                 where: { id: existingLease.tenantId },
-                data: {
-                    firstName: firstName !== undefined ? firstName : existingLease.tenant.firstName,
-                    lastName: lastName !== undefined ? lastName : existingLease.tenant.lastName,
-                    name: `${firstName !== undefined ? firstName : existingLease.tenant.firstName} ${lastName !== undefined ? lastName : existingLease.tenant.lastName}`.trim()
-                }
+                data: tenantUpdateData
             });
         }
 
