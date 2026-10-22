@@ -82,8 +82,11 @@ const initMonthlyInvoiceCron = () => {
                     let promoItems = [];
 
                     if (lease.hasPromotion) {
+                        const isPromoExpired = lease.promoEndDate && new Date(today) > new Date(lease.promoEndDate);
                         const leaseStart = new Date(lease.startDate);
                         const monthIndex = (today.getFullYear() - leaseStart.getFullYear()) * 12 + (today.getMonth() - leaseStart.getMonth());
+
+                        if (!isPromoExpired) {
 
                         if (lease.promoDistribution === 'FIRST_MONTH') {
                             const freeMonths = lease.promoType === 'TWO_MONTHS_FREE' ? 2 : 1;
@@ -99,6 +102,7 @@ const initMonthlyInvoiceCron = () => {
                             if (monthIndex >= 0 && monthIndex < duration) {
                                 discountAmt = Math.min(rentAmt, parseFloat(lease.promoMonthlyDiscount) || 0);
                             }
+                        }
                         }
 
                         if (discountAmt > 0) {

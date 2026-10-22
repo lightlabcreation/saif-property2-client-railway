@@ -425,8 +425,11 @@ exports.runBatchInvoicing = async (req, res) => {
                 let promoItems = [];
 
                 if (lease.hasPromotion) {
+                    const isPromoExpired = lease.promoEndDate && new Date(today) > new Date(lease.promoEndDate);
                     const leaseStart = new Date(lease.startDate);
                     const monthIndex = (today.getFullYear() - leaseStart.getFullYear()) * 12 + (today.getMonth() - leaseStart.getMonth());
+
+                    if (!isPromoExpired) {
 
                     if (lease.promoDistribution === 'FIRST_MONTH') {
                         const freeMonths = lease.promoType === 'TWO_MONTHS_FREE' ? 2 : 1;
@@ -442,6 +445,7 @@ exports.runBatchInvoicing = async (req, res) => {
                         if (monthIndex >= 0 && monthIndex < duration) {
                             discountAmt = Math.min(rentAmount, parseFloat(lease.promoMonthlyDiscount) || 0);
                         }
+                    }
                     }
 
                     if (discountAmt > 0) {

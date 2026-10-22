@@ -350,6 +350,8 @@ exports.updateLease = catchAsync(async (req, res, next) => {
             if (req.body.promoTotalDiscount !== undefined) leaseUpdateData.promoTotalDiscount = parseFloat(req.body.promoTotalDiscount) || 0;
             if (req.body.promoMonthlyDiscount !== undefined) leaseUpdateData.promoMonthlyDiscount = parseFloat(req.body.promoMonthlyDiscount) || 0;
             if (req.body.promoDurationMonths !== undefined) leaseUpdateData.promoDurationMonths = parseInt(req.body.promoDurationMonths) || 0;
+            if (req.body.promoStartDate !== undefined) leaseUpdateData.promoStartDate = req.body.promoStartDate ? workflowService.normalizeToNoon(req.body.promoStartDate) : null;
+            if (req.body.promoEndDate !== undefined) leaseUpdateData.promoEndDate = req.body.promoEndDate ? workflowService.normalizeToNoon(req.body.promoEndDate) : null;
         }
 
         let shouldExpire = false;
@@ -857,8 +859,18 @@ exports.getActiveLease = async (req, res) => {
         }
 
         res.json({
+            id: activeLease.id,
             tenantId: activeLease.tenantId,
-            tenantName: activeLease.tenant.name
+            tenantName: activeLease.tenant.name,
+            startDate: activeLease.startDate ? activeLease.startDate.toISOString().substring(0, 10) : '',
+            endDate: activeLease.endDate ? activeLease.endDate.toISOString().substring(0, 10) : '',
+            monthlyRent: activeLease.monthlyRent || 0,
+            hasPromotion: Boolean(activeLease.hasPromotion),
+            promoType: activeLease.promoType || null,
+            promoDistribution: activeLease.promoDistribution || null,
+            promoTotalDiscount: activeLease.promoTotalDiscount ? parseFloat(activeLease.promoTotalDiscount) : 0,
+            promoMonthlyDiscount: activeLease.promoMonthlyDiscount ? parseFloat(activeLease.promoMonthlyDiscount) : 0,
+            promoDurationMonths: activeLease.promoDurationMonths || 0
         });
     } catch (error) {
         console.error('Get Active Lease Error:', error);
@@ -1046,9 +1058,9 @@ exports.createLease = catchAsync(async (req, res, next) => {
 
         if (req.body.hasPromotion === true || req.body.hasPromotion === 'true') {
             const baseRent = parseFloat(monthlyRent) || 0;
-            const startD = new Date(startDate);
-            const endD = new Date(endDate);
-            let totalMonths = (endD.getFullYear() - startD.getFullYear()) * 12 + (endD.getMonth() - startD.getMonth()) + 1;
+            const startD = workflowService.normalizeToNoon(startDate) || new Date(startDate);
+            const endD = workflowService.normalizeToNoon(endDate) || new Date(endDate);
+            let totalMonths = (endD.getUTCFullYear() - startD.getUTCFullYear()) * 12 + (endD.getUTCMonth() - startD.getUTCMonth()) + 1;
             if (totalMonths <= 0) totalMonths = 12;
 
             let totalDiscount = 0;
