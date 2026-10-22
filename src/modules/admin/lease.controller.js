@@ -137,6 +137,14 @@ exports.getLeaseHistory = async (req, res) => {
                 startDate: l.startDate ? l.startDate.toISOString().substring(0, 10) : '',
                 endDate: l.endDate ? l.endDate.toISOString().substring(0, 10) : '',
                 monthlyRent: l.monthlyRent || 0,
+                hasPromotion: l.hasPromotion || false,
+                promoType: l.promoType || null,
+                promoDistribution: l.promoDistribution || null,
+                promoTotalDiscount: l.promoTotalDiscount ? parseFloat(l.promoTotalDiscount) : 0,
+                promoMonthlyDiscount: l.promoMonthlyDiscount ? parseFloat(l.promoMonthlyDiscount) : 0,
+                promoDurationMonths: l.promoDurationMonths || 0,
+                promoStartDate: l.promoStartDate ? l.promoStartDate.toISOString().substring(0, 10) : '',
+                promoEndDate: l.promoEndDate ? l.promoEndDate.toISOString().substring(0, 10) : '',
                 isCredentialsSent: isCredentialsSent,
                 tenantId: l.tenantId,
                 propertyId: l.unit.propertyId
@@ -318,6 +326,15 @@ exports.updateLease = catchAsync(async (req, res, next) => {
             leaseUpdateData.monthlyRent = rentAmt;
         }
         if (startDate) leaseUpdateData.startDate = workflowService.normalizeToNoon(startDate);
+
+        if (req.body.hasPromotion !== undefined) {
+            leaseUpdateData.hasPromotion = Boolean(req.body.hasPromotion);
+            if (req.body.promoType !== undefined) leaseUpdateData.promoType = req.body.promoType;
+            if (req.body.promoDistribution !== undefined) leaseUpdateData.promoDistribution = req.body.promoDistribution;
+            if (req.body.promoTotalDiscount !== undefined) leaseUpdateData.promoTotalDiscount = parseFloat(req.body.promoTotalDiscount) || 0;
+            if (req.body.promoMonthlyDiscount !== undefined) leaseUpdateData.promoMonthlyDiscount = parseFloat(req.body.promoMonthlyDiscount) || 0;
+            if (req.body.promoDurationMonths !== undefined) leaseUpdateData.promoDurationMonths = parseInt(req.body.promoDurationMonths) || 0;
+        }
 
         let shouldExpire = false;
         let shouldReactivate = false;
@@ -973,6 +990,59 @@ exports.createLease = catchAsync(async (req, res, next) => {
             newStatus = 'Scheduled';
         }
 
+        // Calculate Promotional Rent Discount details if enabled
+        let promoData = {
+            hasPromotion: false,
+            promoType: null,
+            promoDistribution: null,
+            promoTotalDiscount: 0,
+            promoMonthlyDiscount: 0,
+            promoDurationMonths: 0,
+            promoStartDate: null,
+            promoEndDate: null
+        };
+
+        if (req.body.hasPromotion === true || req.body.hasPromotion === 'true') {
+            const baseRent = parseFloat(monthlyRent) || 0;
+            const startD = new Date(startDate);
+            const endD = new Date(endDate);
+            let totalMonths = (endD.getFullYear() - startD.getFullYear()) * 12 + (endD.getMonth() - startD.getMonth()) + 1;
+            if (totalMonths <= 0) totalMonths = 12;
+
+            let totalDiscount = 0;
+            const promoType = req.body.promoType || 'ONE_MONTH_FREE';
+            if (promoType === 'ONE_MONTH_FREE') {
+                totalDiscount = baseRent;
+            } else if (promoType === 'TWO_MONTHS_FREE') {
+                totalDiscount = baseRent * 2;
+            } else if (promoType === 'CUSTOM_AMOUNT') {
+                totalDiscount = parseFloat(req.body.promoTotalDiscount) || 0;
+            }
+
+            const promoDist = req.body.promoDistribution || 'FIRST_MONTH';
+            let monthlyDiscount = 0;
+            let durationMonths = 1;
+
+            if (promoDist === 'DISTRIBUTED') {
+                durationMonths = totalMonths;
+                monthlyDiscount = parseFloat((totalDiscount / totalMonths).toFixed(2));
+            } else {
+                durationMonths = promoType === 'TWO_MONTHS_FREE' ? 2 : 1;
+                monthlyDiscount = totalDiscount;
+            }
+
+            promoData = {
+                hasPromotion: true,
+                promoType: promoType,
+                promoDistribution: promoDist,
+                promoTotalDiscount: totalDiscount,
+                promoMonthlyDiscount: monthlyDiscount,
+                promoDurationMonths: durationMonths,
+                promoStartDate: workflowService.normalizeToNoon(startDate),
+                promoEndDate: workflowService.normalizeToNoon(endDate)
+            };
+        }
+
         const leaseData = {
             startDate: workflowService.normalizeToNoon(startDate),
             endDate: workflowService.normalizeToNoon(endDate), 
@@ -980,7 +1050,8 @@ exports.createLease = catchAsync(async (req, res, next) => {
             securityDeposit: parseFloat(securityDeposit) || 0,
             status: newStatus,
             leaseType: isBedroomLease ? 'BEDROOM' : 'FULL_UNIT',
-            bedroomId: bId
+            bedroomId: bId,
+            ...promoData
         };
 
         let lease;
@@ -1153,6 +1224,7 @@ exports.createLease = catchAsync(async (req, res, next) => {
                 const invoiceNo = `INV-LEASE-${String(count + 1).padStart(5, '0')}-${randomId}`;
 
                 let rentAmt = parseFloat(monthlyRent) || 0;
+                let grossRentAmt = rentAmt;
 
                 // Pro-rata logic for the first month
                 if (iterDate.getMonth() === start.getMonth() && iterDate.getFullYear() === start.getFullYear()) {
@@ -1161,8 +1233,42 @@ exports.createLease = catchAsync(async (req, res, next) => {
                     if (remainingDays < totalDays) {
                         rentAmt = (rentAmt / totalDays) * remainingDays;
                         rentAmt = parseFloat(rentAmt.toFixed(2));
+                        grossRentAmt = rentAmt;
                     }
                 }
+
+                // Promotional discount calculation for this invoice
+                let discountAmt = 0;
+                let promoLineItems = [];
+
+                if (lease.hasPromotion) {
+                    const monthIndex = (iterDate.getFullYear() - start.getFullYear()) * 12 + (iterDate.getMonth() - start.getMonth());
+                    if (lease.promoDistribution === 'FIRST_MONTH') {
+                        const freeMonths = lease.promoType === 'TWO_MONTHS_FREE' ? 2 : 1;
+                        if (monthIndex < freeMonths) {
+                            if (lease.promoType === 'CUSTOM_AMOUNT') {
+                                discountAmt = Math.min(rentAmt, parseFloat(lease.promoTotalDiscount) || rentAmt);
+                            } else {
+                                discountAmt = rentAmt; // 100% free for this promotional month
+                            }
+                        }
+                    } else if (lease.promoDistribution === 'DISTRIBUTED') {
+                        const duration = lease.promoDurationMonths || 12;
+                        if (monthIndex < duration) {
+                            discountAmt = Math.min(rentAmt, parseFloat(lease.promoMonthlyDiscount) || 0);
+                        }
+                    }
+
+                    if (discountAmt > 0) {
+                        discountAmt = parseFloat(discountAmt.toFixed(2));
+                        promoLineItems.push({
+                            description: `Promotional Rent Discount${lease.promoType === 'ONE_MONTH_FREE' ? ' (1 Month Free)' : lease.promoType === 'TWO_MONTHS_FREE' ? ' (2 Months Free)' : ''}`,
+                            amount: -discountAmt
+                        });
+                    }
+                }
+
+                const netRentAmt = Math.max(0, parseFloat((rentAmt - discountAmt).toFixed(2)));
 
                 await tx.invoice.create({
                     data: {
@@ -1172,13 +1278,18 @@ exports.createLease = catchAsync(async (req, res, next) => {
                         leaseId: lease.id,
                         leaseType: isFullUnitLease ? 'FULL_UNIT' : 'BEDROOM_WISE',
                         month: currentIterMonthStr,
-                        rent: rentAmt,
+                        grossRent: grossRentAmt,
+                        discountAmount: discountAmt,
+                        rent: netRentAmt,
                         serviceFees: 0,
-                        amount: rentAmt,
+                        amount: netRentAmt,
                         paidAmount: 0,
-                        balanceDue: rentAmt,
+                        balanceDue: netRentAmt,
                         status: 'sent',
-                        dueDate: iterDate > start ? iterDate : start
+                        dueDate: iterDate > start ? iterDate : start,
+                        items: promoLineItems.length > 0 ? {
+                            create: promoLineItems
+                        } : undefined
                     }
                 });
             }

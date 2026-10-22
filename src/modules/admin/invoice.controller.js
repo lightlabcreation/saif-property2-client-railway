@@ -75,7 +75,10 @@ exports.getInvoices = async (req, res) => {
             let currentRent = parseFloat(inv.rent);
             let currentStatus = inv.status.toLowerCase();
 
-            if (currentStatus !== 'paid' && currentAmount === 0 && inv.lease && parseFloat(inv.lease.monthlyRent) > 0) {
+            const hasPromo = (inv.discountAmount && parseFloat(inv.discountAmount) > 0) || 
+                             (inv.items && inv.items.some(i => i.description && i.description.toLowerCase().includes('promotional')));
+
+            if (!hasPromo && currentStatus !== 'paid' && currentAmount === 0 && inv.lease && parseFloat(inv.lease.monthlyRent) > 0) {
                 const rentAmt = parseFloat(inv.lease.monthlyRent);
                 // Update in DB for persistence
                 await prisma.invoice.update({
@@ -104,6 +107,8 @@ exports.getInvoices = async (req, res) => {
                 tenant: inv.tenant?.name || (inv.tenant?.firstName ? `${inv.tenant.firstName} ${inv.tenant.lastName || ''}`.trim() : 'Unknown Tenant'),
                 unit: inv.unit.name,
                 month: inv.month,
+                grossRent: inv.grossRent ? parseFloat(inv.grossRent) : (currentRent + (parseFloat(inv.discountAmount) || 0)),
+                discountAmount: parseFloat(inv.discountAmount || 0),
                 rent: currentRent,
                 serviceFees: parseFloat(inv.serviceFees),
                 amount: currentAmount,
@@ -415,9 +420,45 @@ exports.runBatchInvoicing = async (req, res) => {
                     totalLockerFees += proratedLocker;
                 }
 
+                // --- PROMOTIONAL DISCOUNT CALCULATION ---
+                let discountAmt = 0;
+                let promoItems = [];
+
+                if (lease.hasPromotion) {
+                    const leaseStart = new Date(lease.startDate);
+                    const monthIndex = (today.getFullYear() - leaseStart.getFullYear()) * 12 + (today.getMonth() - leaseStart.getMonth());
+
+                    if (lease.promoDistribution === 'FIRST_MONTH') {
+                        const freeMonths = lease.promoType === 'TWO_MONTHS_FREE' ? 2 : 1;
+                        if (monthIndex >= 0 && monthIndex < freeMonths) {
+                            if (lease.promoType === 'CUSTOM_AMOUNT') {
+                                discountAmt = Math.min(rentAmount, parseFloat(lease.promoTotalDiscount) || rentAmount);
+                            } else {
+                                discountAmt = rentAmount;
+                            }
+                        }
+                    } else if (lease.promoDistribution === 'DISTRIBUTED') {
+                        const duration = lease.promoDurationMonths || 12;
+                        if (monthIndex >= 0 && monthIndex < duration) {
+                            discountAmt = Math.min(rentAmount, parseFloat(lease.promoMonthlyDiscount) || 0);
+                        }
+                    }
+
+                    if (discountAmt > 0) {
+                        discountAmt = parseFloat(discountAmt.toFixed(2));
+                        promoItems.push({
+                            description: `Promotional Rent Discount${lease.promoType === 'ONE_MONTH_FREE' ? ' (1 Month Free)' : lease.promoType === 'TWO_MONTHS_FREE' ? ' (2 Months Free)' : ''}`,
+                            amount: -discountAmt
+                        });
+                    }
+                }
+
+                const netRentAmount = Math.max(0, parseFloat((rentAmount - discountAmt).toFixed(2)));
+                const finalTotalAmount = netRentAmount + totalLockerFees;
+                const combinedLineItems = [...promoItems, ...lockerItems];
+
                 let attempts = 0;
                 let invoiceNo;
-                const finalTotalAmount = rentAmount + totalLockerFees;
 
                 while (attempts < 5) {
                     try {
@@ -430,15 +471,17 @@ exports.runBatchInvoicing = async (req, res) => {
                                 leaseId: lease.id,
                                 leaseType: lease.unit.rentalMode,
                                 month: currentMonth,
-                                rent: rentAmount,
+                                grossRent: rentAmount,
+                                discountAmount: discountAmt,
+                                rent: netRentAmount,
                                 serviceFees: totalLockerFees,
                                 amount: finalTotalAmount,
                                 paidAmount: 0,
                                 balanceDue: finalTotalAmount,
                                 status: 'sent',
                                 dueDate: dueDate,
-                                items: lockerItems.length > 0 ? {
-                                    create: lockerItems
+                                items: combinedLineItems.length > 0 ? {
+                                    create: combinedLineItems
                                 } : undefined
                             }
                         });
@@ -457,7 +500,7 @@ exports.runBatchInvoicing = async (req, res) => {
                 await prisma.rentRunLog.create({
                     data: {
                         rentRunId: rentRun.id,
-                        message: `[Success] Lease ID ${lease.id}: Invoice ${invoiceNo} generated (Rent: $${rentAmount}, Lockers: $${totalLockerFees}).`
+                        message: `[Success] Lease ID ${lease.id}: Invoice ${invoiceNo} generated (Gross: $${rentAmount}, Promo: -$${discountAmt}, Net: $${netRentAmount}, Lockers: $${totalLockerFees}).`
                     }
                 });
 

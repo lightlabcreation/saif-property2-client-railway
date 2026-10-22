@@ -113,9 +113,23 @@ const generateInvoicePDF = (invoice, res, settings = {}) => {
         doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).strokeColor(colors.accent).lineWidth(0.5).stroke();
     };
 
-    // Rent Row
-    if (parseFloat(invoice.rent) > 0) {
+    // Rent Row (Gross Contractual Rent if promotional discount exists, or standard rent)
+    const grossRentVal = parseFloat(invoice.grossRent) || (parseFloat(invoice.rent) + (parseFloat(invoice.discountAmount) || 0));
+    const discountVal = parseFloat(invoice.discountAmount) || 0;
+
+    if (grossRentVal > 0) {
+        drawRow('Monthly Rent Coverage', invoice.category === 'DEPOSIT' ? 'Security Deposit' : 'Rental Income', grossRentVal);
+    } else if (parseFloat(invoice.rent) > 0) {
         drawRow('Monthly Rent Coverage', invoice.category === 'DEPOSIT' ? 'Security Deposit' : 'Rental Income', invoice.rent);
+    }
+
+    // Promotional Discount Row (Separate line item)
+    if (discountVal > 0) {
+        doc.fillColor(colors.text).font('Helvetica').fontSize(10).text('Promotional Rent Discount', 60, currentY, { width: 180 });
+        doc.fillColor(colors.secondary).text('Discount', 250, currentY);
+        doc.fillColor('#16a34a').font('Helvetica-Bold').text(`-$${discountVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 450, currentY, { align: 'right', width: 90 });
+        currentY += 25;
+        doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).strokeColor(colors.accent).lineWidth(0.5).stroke();
     }
 
     // Service Fees Row

@@ -314,6 +314,16 @@ model Lease {
   temp_unit                   Unit?                        @relation("LeaseTempUnit", fields: [temp_unit_id], references: [id])
   TemporaryAssignmentHistory  TemporaryAssignmentHistory[]
 
+  // --- Promotional Rent Discount ---
+  hasPromotion                Boolean                      @default(false)
+  promoType                   String?                      // 'ONE_MONTH_FREE', 'TWO_MONTHS_FREE', 'CUSTOM_AMOUNT'
+  promoDistribution          String?                      // 'FIRST_MONTH', 'DISTRIBUTED'
+  promoTotalDiscount          Decimal?                     @default(0.000000000000000000000000000000)
+  promoMonthlyDiscount        Decimal?                     @default(0.000000000000000000000000000000)
+  promoDurationMonths         Int?                         @default(0)
+  promoStartDate              DateTime?
+  promoEndDate                DateTime?
+
   @@index([tenantId], map: "Lease_tenantId_fkey")
   @@index([unitId], map: "Lease_unitId_fkey")
   @@index([bedroomId], map: "lease_bedroomId_fkey")
@@ -483,6 +493,8 @@ model Invoice {
   paymentMethod String?
   balanceDue    Decimal           @default(0.000000000000000000000000000000)
   paidAmount    Decimal           @default(0.000000000000000000000000000000)
+  grossRent     Decimal?          @default(0.000000000000000000000000000000)
+  discountAmount Decimal?         @default(0.000000000000000000000000000000)
   leaseId       Int?
   leaseType     String?
   category      InvoiceCategory   @default(RENT)

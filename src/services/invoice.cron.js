@@ -77,6 +77,41 @@ const initMonthlyInvoiceCron = () => {
                         continue;
                     }
 
+                    // Calculate Promotional Rent Discount
+                    let discountAmt = 0;
+                    let promoItems = [];
+
+                    if (lease.hasPromotion) {
+                        const leaseStart = new Date(lease.startDate);
+                        const monthIndex = (today.getFullYear() - leaseStart.getFullYear()) * 12 + (today.getMonth() - leaseStart.getMonth());
+
+                        if (lease.promoDistribution === 'FIRST_MONTH') {
+                            const freeMonths = lease.promoType === 'TWO_MONTHS_FREE' ? 2 : 1;
+                            if (monthIndex >= 0 && monthIndex < freeMonths) {
+                                if (lease.promoType === 'CUSTOM_AMOUNT') {
+                                    discountAmt = Math.min(rentAmt, parseFloat(lease.promoTotalDiscount) || rentAmt);
+                                } else {
+                                    discountAmt = rentAmt;
+                                }
+                            }
+                        } else if (lease.promoDistribution === 'DISTRIBUTED') {
+                            const duration = lease.promoDurationMonths || 12;
+                            if (monthIndex >= 0 && monthIndex < duration) {
+                                discountAmt = Math.min(rentAmt, parseFloat(lease.promoMonthlyDiscount) || 0);
+                            }
+                        }
+
+                        if (discountAmt > 0) {
+                            discountAmt = parseFloat(discountAmt.toFixed(2));
+                            promoItems.push({
+                                description: `Promotional Rent Discount${lease.promoType === 'ONE_MONTH_FREE' ? ' (1 Month Free)' : lease.promoType === 'TWO_MONTHS_FREE' ? ' (2 Months Free)' : ''}`,
+                                amount: -discountAmt
+                            });
+                        }
+                    }
+
+                    const netRentAmt = Math.max(0, parseFloat((rentAmt - discountAmt).toFixed(2)));
+
                     // 3. Generate Invoice
                     const dueDate = new Date(today.getFullYear(), today.getMonth(), 5);
 
@@ -93,13 +128,18 @@ const initMonthlyInvoiceCron = () => {
                                     leaseId: lease.id,
                                     leaseType: lease.unit.rentalMode,
                                     month: currentMonth,
-                                    rent: rentAmt,
+                                    grossRent: rentAmt,
+                                    discountAmount: discountAmt,
+                                    rent: netRentAmt,
                                     serviceFees: 0,
-                                    amount: rentAmt,
+                                    amount: netRentAmt,
                                     paidAmount: 0,
-                                    balanceDue: rentAmt,
+                                    balanceDue: netRentAmt,
                                     status: 'sent',
-                                    dueDate: dueDate
+                                    dueDate: dueDate,
+                                    items: promoItems.length > 0 ? {
+                                        create: promoItems
+                                    } : undefined
                                 }
                             });
                             break;
