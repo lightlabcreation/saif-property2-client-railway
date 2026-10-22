@@ -147,7 +147,11 @@ exports.getLeaseHistory = async (req, res) => {
                 promoEndDate: l.promoEndDate ? l.promoEndDate.toISOString().substring(0, 10) : '',
                 isCredentialsSent: isCredentialsSent,
                 tenantId: l.tenantId,
-                propertyId: l.unit.propertyId
+                propertyId: l.unit.propertyId,
+                unitId: l.unitId,
+                bedroomId: l.bedroomId,
+                securityDeposit: l.securityDeposit ? parseFloat(l.securityDeposit) : 0,
+                coTenantIds: l.residents ? l.residents.map(r => r.id) : []
             };
         });
 
@@ -293,7 +297,7 @@ exports.updateLease = catchAsync(async (req, res, next) => {
         // 0. Fetch existing lease to get tenantId
         const existingLease = await tx.lease.findUnique({
             where: { id },
-            include: { tenant: true }
+            include: { tenant: true, unit: true }
         });
 
         if (!existingLease) throw new AppError('Lease not found', 404);
@@ -320,6 +324,18 @@ exports.updateLease = catchAsync(async (req, res, next) => {
 
         // 2. Prepare lease update data
         const leaseUpdateData = {};
+        if (req.body.tenantId && !isNaN(parseInt(req.body.tenantId))) {
+            leaseUpdateData.tenantId = parseInt(req.body.tenantId);
+        }
+        if (req.body.unitId && !isNaN(parseInt(req.body.unitId))) {
+            leaseUpdateData.unitId = parseInt(req.body.unitId);
+        }
+        if (req.body.bedroomId !== undefined) {
+            leaseUpdateData.bedroomId = req.body.bedroomId ? parseInt(req.body.bedroomId) : null;
+        }
+        if (req.body.securityDeposit !== undefined) {
+            leaseUpdateData.securityDeposit = parseFloat(req.body.securityDeposit) || 0;
+        }
         if (monthlyRent !== undefined) {
             const rentAmt = parseFloat(monthlyRent);
             if (isNaN(rentAmt) || rentAmt < 0) throw new AppError('Invalid rent amount', 400);
@@ -362,6 +378,32 @@ exports.updateLease = catchAsync(async (req, res, next) => {
             data: leaseUpdateData,
             include: { unit: { include: { bedroomsList: true } }, tenant: true }
         });
+
+        // 3.1. Update Co-Tenants / Residents if provided
+        if (Array.isArray(req.body.coTenantIds)) {
+            const newCoTenantIds = req.body.coTenantIds.map(cid => parseInt(cid)).filter(cid => !isNaN(cid));
+            
+            // Unlink residents previously attached to this lease that were removed
+            await tx.user.updateMany({
+                where: {
+                    leaseId: id,
+                    id: { notIn: newCoTenantIds.length > 0 ? newCoTenantIds : [-1] }
+                },
+                data: { leaseId: null }
+            });
+
+            // Link the selected co-tenants to this lease
+            if (newCoTenantIds.length > 0) {
+                await tx.user.updateMany({
+                    where: { id: { in: newCoTenantIds } },
+                    data: {
+                        leaseId: id,
+                        unitId: updatedLease.unitId,
+                        buildingId: updatedLease.unit?.propertyId || undefined
+                    }
+                });
+            }
+        }
 
         // 3.5. If the lease has just expired due to endDate change, free up the unit
         if (shouldExpire) {
