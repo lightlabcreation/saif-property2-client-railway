@@ -685,13 +685,24 @@ exports.getMonthlyRentCollectionsReport = async (req, res) => {
                     );
 
                     let rentCharged = 0;
+                    let promotionalDiscount = 0;
                     let rentCollected = 0;
                     let lockerCharged = 0;
                     let otherCharged = 0;
 
                     applicableInvoices.forEach(inv => {
                         if (inv.category === 'RENT') {
-                            rentCharged += parseFloat(inv.amount || 0);
+                            let invDiscount = parseFloat(inv.discountAmount) || 0;
+                            if (invDiscount === 0 && inv.items && inv.items.length > 0) {
+                                const promoItem = inv.items.find(i => i.description && i.description.toLowerCase().includes('promotional'));
+                                if (promoItem) {
+                                    invDiscount = Math.abs(parseFloat(promoItem.amount) || 0);
+                                }
+                            }
+                            const invGross = parseFloat(inv.grossRent) || (invDiscount > 0 ? (parseFloat(inv.rent || 0) + invDiscount) : parseFloat(inv.amount || 0));
+
+                            rentCharged += invGross > 0 ? invGross : parseFloat(inv.amount || 0);
+                            promotionalDiscount += invDiscount;
                             rentCollected += parseFloat(inv.paidAmount || 0);
                         } else if (inv.category === 'SERVICE' && (inv.description || '').toLowerCase().includes('locker')) {
                             lockerCharged += parseFloat(inv.amount || 0);
@@ -733,6 +744,7 @@ exports.getMonthlyRentCollectionsReport = async (req, res) => {
                         Month: mMonthStr,
                         'Unit Number': unitNumber,
                         'Rent Charged': rentCharged,
+                        'Promotional Discount': promotionalDiscount,
                         'Rent Collected': rentCollected,
                         'Deposit': depositTotal,
                         'Lead Tenant Name': tenantName,
@@ -756,6 +768,7 @@ exports.getMonthlyRentCollectionsReport = async (req, res) => {
             { header: 'Month', key: 'Month', width: 20 },
             { header: 'Unit Number', key: 'Unit Number', width: 15 },
             { header: 'Rent Charged', key: 'Rent Charged', width: 15 },
+            { header: 'Promotional Discount', key: 'Promotional Discount', width: 20 },
             { header: 'Rent Collected', key: 'Rent Collected', width: 15 },
             { header: 'Deposit', key: 'Deposit', width: 15 },
             { header: 'Lead Tenant Name', key: 'Lead Tenant Name', width: 25 },
