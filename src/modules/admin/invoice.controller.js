@@ -140,14 +140,20 @@ exports.createInvoice = async (req, res) => {
             return res.status(400).json({ message: 'Tenant ID and Unit ID are required' });
         }
 
-        // 1. Find the lease for this tenant and unit (can be Active or even a past lease for billing)
+        const parsedTenantId = parseInt(tenantId);
+        const parsedUnitId = parseInt(unitId);
+
+        // 1. Find the lease for this tenant and unit (can be Active or even a past lease for billing, supporting primary tenant or resident)
         const lease = await prisma.lease.findFirst({
             where: {
-                tenantId: parseInt(tenantId),
-                unitId: parseInt(unitId)
+                unitId: parsedUnitId,
+                OR: [
+                    { tenantId: parsedTenantId },
+                    { residents: { some: { id: parsedTenantId } } }
+                ]
             },
             orderBy: { endDate: 'desc' }, // Latest lease first
-            include: { unit: true, tenant: true }
+            include: { unit: true, tenant: true, residents: true }
         });
 
         if (!lease) {
@@ -155,7 +161,7 @@ exports.createInvoice = async (req, res) => {
         }
 
         // Determine who to bill: If tenant is a RESIDENT, bill their Parent
-        let billableTenantId = parseInt(tenantId);
+        let billableTenantId = parsedTenantId;
         if (lease.tenant.type === 'RESIDENT') {
             if (!lease.tenant.parentId) {
                 return res.status(400).json({ message: 'Resident has no billable parent assigned.' });
@@ -169,8 +175,12 @@ exports.createInvoice = async (req, res) => {
         const rentAmt = parseFloat(rent) || 0;
         let feesAmt = parseFloat(serviceFees) || 0;
 
-        if (Array.isArray(items) && items.length > 0) {
-            feesAmt = items.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
+        let combinedLineItems = Array.isArray(items) && items.length > 0 
+            ? items.filter(i => i.description && i.amount !== undefined).map(item => ({ description: item.description, amount: parseFloat(item.amount || 0) }))
+            : [];
+
+        if (combinedLineItems.length > 0 && feesAmt === 0 && rentAmt === 0) {
+            feesAmt = combinedLineItems.reduce((sum, item) => sum + item.amount, 0);
         }
 
         if (rentAmt > 0 && feesAmt > 0) {
@@ -183,7 +193,54 @@ exports.createInvoice = async (req, res) => {
             finalRent = parseFloat(lease.monthlyRent) || 0;
         }
 
-        const totalAmount = finalRent + feesAmt;
+        // Calculate Promotional Discount
+        let discountAmt = 0;
+        if (rentAmt > 0 && lease.hasPromotion) {
+            let targetDate = new Date();
+            if (month) {
+                const parsedDate = new Date(month + ' 1');
+                if (!isNaN(parsedDate.getTime())) {
+                    targetDate = parsedDate;
+                }
+            }
+            const isPromoExpired = lease.promoEndDate && new Date(lease.promoEndDate) < targetDate;
+            const leaseStart = lease.promoStartDate ? new Date(lease.promoStartDate) : (lease.startDate ? new Date(lease.startDate) : targetDate);
+            const monthIndex = (targetDate.getFullYear() - leaseStart.getFullYear()) * 12 + (targetDate.getMonth() - leaseStart.getMonth());
+
+            if (!isPromoExpired) {
+                if (lease.promoDistribution === 'FIRST_MONTH') {
+                    const freeMonths = lease.promoType === 'TWO_MONTHS_FREE' ? 2 : 1;
+                    if (monthIndex >= 0 && monthIndex < freeMonths) {
+                        if (lease.promoType === 'CUSTOM_AMOUNT') {
+                            discountAmt = Math.min(finalRent, parseFloat(lease.promoTotalDiscount) || finalRent);
+                        } else {
+                            discountAmt = finalRent;
+                        }
+                    }
+                } else if (lease.promoDistribution === 'DISTRIBUTED') {
+                    const duration = lease.promoDurationMonths || 12;
+                    if (monthIndex >= 0 && monthIndex < duration) {
+                        discountAmt = Math.min(finalRent, parseFloat(lease.promoMonthlyDiscount) || 0);
+                    }
+                }
+            }
+
+            if (discountAmt > 0) {
+                discountAmt = parseFloat(discountAmt.toFixed(2));
+                const hasExistingPromo = combinedLineItems.some(i => i.description && i.description.toLowerCase().includes('promotional'));
+                if (!hasExistingPromo) {
+                    combinedLineItems.push({
+                        description: `Promotional Rent Discount${lease.promoType === 'ONE_MONTH_FREE' ? ' (1 Month Free)' : lease.promoType === 'TWO_MONTHS_FREE' ? ' (2 Months Free)' : ''}`,
+                        amount: -discountAmt
+                    });
+                }
+            }
+        } else if (req.body.discountAmount && parseFloat(req.body.discountAmount) > 0) {
+            discountAmt = parseFloat(req.body.discountAmount);
+        }
+
+        const netRent = Math.max(0, parseFloat((finalRent - discountAmt).toFixed(2)));
+        const totalAmount = netRent + feesAmt;
 
         // Generate Invoice Number
         const prefix = req.body.category === 'SECURITY_DEPOSIT' ? 'INV-DEP' : 'INV-MAN';
@@ -196,11 +253,13 @@ exports.createInvoice = async (req, res) => {
                     data: {
                         invoiceNo,
                         tenantId: billableTenantId,
-                        unitId: parseInt(unitId),
+                        unitId: parsedUnitId,
                         leaseId: lease.id,
                         leaseType: lease.unit.rentalMode,
                         month,
-                        rent: finalRent,
+                        grossRent: finalRent,
+                        discountAmount: discountAmt,
+                        rent: netRent,
                         serviceFees: feesAmt,
                         amount: totalAmount,
                         paidAmount: 0,
@@ -209,16 +268,14 @@ exports.createInvoice = async (req, res) => {
                         category: req.body.category || 'RENT',
                         description: req.body.description || null,
                         dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
-                        items: Array.isArray(items) && items.length > 0 ? {
-                            create: items.map(item => ({
-                                description: item.description,
-                                amount: parseFloat(item.amount || 0)
-                            }))
+                        items: combinedLineItems.length > 0 ? {
+                            create: combinedLineItems
                         } : undefined
                     },
                     include: {
                         tenant: true,
-                        unit: true
+                        unit: true,
+                        items: true
                     }
                 });
                 break;

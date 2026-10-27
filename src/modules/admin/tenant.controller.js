@@ -261,6 +261,11 @@ exports.getAllTenants = async (req, res) => {
                 leaseEndDate: activeLease?.endDate || null,
                 activeLeaseRole: activeLease ? (t.leases.find(l => l.id === activeLease.id) ? 'TENANT' : 'RESIDENT') : null,
                 rentAmount: activeLease?.monthlyRent || 0,
+                hasPromotion: activeLease?.hasPromotion || false,
+                promoMonthlyDiscount: activeLease?.hasPromotion ? (parseFloat(activeLease?.promoMonthlyDiscount) || 0) : 0,
+                promoType: activeLease?.promoType || null,
+                promoDistribution: activeLease?.promoDistribution || null,
+                promoDurationMonths: activeLease?.promoDurationMonths || 0,
                 insurance: t.insurances,
                 documents: t.documents,
                 leases: t.leases, // TargetLintErrorIds
