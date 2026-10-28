@@ -676,8 +676,7 @@ exports.getMonthlyRentCollectionsReport = async (req, res) => {
                     const longMonthStr = monthDate.toLocaleString('en-US', { month: 'long' }) + " " + mYear;
                     
                     const applicableInvoices = invoices.filter(inv => 
-                        inv.tenantId === tenantId && 
-                        (inv.leaseId === lease.id || inv.unitId === lease.unitId) &&
+                        (inv.leaseId === lease.id || (inv.unitId === lease.unitId && inv.tenantId === tenantId)) &&
                         (
                             inv.month === shortMonthStr || 
                             inv.month === longMonthStr
@@ -714,7 +713,7 @@ exports.getMonthlyRentCollectionsReport = async (req, res) => {
                     });
 
                     let depositCollected = 0;
-                    invoices.filter(inv => inv.tenantId === tenantId && (inv.category === 'SECURITY_DEPOSIT' || (inv.description || '').toLowerCase().includes('deposit'))).forEach(inv => {
+                    invoices.filter(inv => (inv.leaseId === lease.id || (inv.unitId === lease.unitId && inv.tenantId === tenantId)) && (inv.category === 'SECURITY_DEPOSIT' || (inv.description || '').toLowerCase().includes('deposit'))).forEach(inv => {
                         inv.payments.forEach(p => {
                             const pDate = new Date(p.date);
                             if (pDate >= monthStart && pDate <= monthEnd) {
