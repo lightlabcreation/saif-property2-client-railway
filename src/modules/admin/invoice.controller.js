@@ -370,32 +370,41 @@ exports.runBatchInvoicing = async (req, res) => {
     console.log('[Batch Rent Run] Starting execution...');
 
     // Timezone-safe month parsing (handles Canada EST/EDT cleanly)
-    let targetDate;
+    const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    let targetYear;
+    let targetMonthIndex;
     let currentMonth;
 
     if (req.body && req.body.month && typeof req.body.month === 'string' && req.body.month.trim()) {
         const rawMonth = req.body.month.trim();
         if (rawMonth.includes('-')) {
             const [yStr, mStr] = rawMonth.split('-');
-            const y = parseInt(yStr);
-            const m = parseInt(mStr) - 1;
-            targetDate = new Date(Date.UTC(y, m, 15, 12, 0, 0));
+            targetYear = parseInt(yStr);
+            targetMonthIndex = parseInt(mStr) - 1;
         } else {
-            const parsed = new Date(rawMonth + ' 15, 12:00:00 UTC');
-            if (!isNaN(parsed.getTime())) {
-                targetDate = parsed;
+            const parts = rawMonth.split(/\s+/);
+            const mIdx = monthNames.findIndex(m => m.toLowerCase() === parts[0].toLowerCase());
+            const y = parseInt(parts[1]);
+            if (mIdx !== -1 && !isNaN(y)) {
+                targetYear = y;
+                targetMonthIndex = mIdx;
             } else {
-                targetDate = new Date();
+                const now = new Date();
+                targetYear = now.getFullYear();
+                targetMonthIndex = now.getMonth();
             }
         }
-        currentMonth = targetDate.toLocaleString('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' });
     } else {
-        targetDate = new Date();
-        currentMonth = targetDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const now = new Date();
+        targetYear = now.getFullYear();
+        targetMonthIndex = now.getMonth();
     }
 
-    const targetYear = targetDate.getUTCFullYear();
-    const targetMonthIndex = targetDate.getUTCMonth();
+    currentMonth = `${monthNames[targetMonthIndex]} ${targetYear}`;
 
     const monthStart = new Date(Date.UTC(targetYear, targetMonthIndex, 1, 0, 0, 0, 0));
     const monthEnd = new Date(Date.UTC(targetYear, targetMonthIndex + 1, 0, 23, 59, 59, 999));
