@@ -368,8 +368,38 @@ exports.updateInvoice = async (req, res) => {
 // POST /api/admin/invoices/batch (Trigger manual batch run)
 exports.runBatchInvoicing = async (req, res) => {
     console.log('[Batch Rent Run] Starting execution...');
-    const today = new Date();
-    const currentMonth = today.toLocaleString('default', { month: 'long', year: 'numeric' });
+
+    // Timezone-safe month parsing (handles Canada EST/EDT cleanly)
+    let targetDate;
+    let currentMonth;
+
+    if (req.body && req.body.month && typeof req.body.month === 'string' && req.body.month.trim()) {
+        const rawMonth = req.body.month.trim();
+        if (rawMonth.includes('-')) {
+            const [yStr, mStr] = rawMonth.split('-');
+            const y = parseInt(yStr);
+            const m = parseInt(mStr) - 1;
+            targetDate = new Date(Date.UTC(y, m, 15, 12, 0, 0));
+        } else {
+            const parsed = new Date(rawMonth + ' 15, 12:00:00 UTC');
+            if (!isNaN(parsed.getTime())) {
+                targetDate = parsed;
+            } else {
+                targetDate = new Date();
+            }
+        }
+        currentMonth = targetDate.toLocaleString('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' });
+    } else {
+        targetDate = new Date();
+        currentMonth = targetDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    }
+
+    const targetYear = targetDate.getUTCFullYear();
+    const targetMonthIndex = targetDate.getUTCMonth();
+
+    const monthStart = new Date(Date.UTC(targetYear, targetMonthIndex, 1, 0, 0, 0, 0));
+    const monthEnd = new Date(Date.UTC(targetYear, targetMonthIndex + 1, 0, 23, 59, 59, 999));
+    const dueDate = new Date(Date.UTC(targetYear, targetMonthIndex, 10, 12, 0, 0)); // 10th of target month
 
     // 1. Initialize RentRun Record
     const rentRun = await prisma.rentRun.create({
@@ -386,10 +416,8 @@ exports.runBatchInvoicing = async (req, res) => {
         const activeLeases = await prisma.lease.findMany({
             where: {
                 status: 'Active',
-                startDate: { lte: today },
-                endDate: { gte: today },
-                // Only include leases for actual tenants (INDIVIDUAL or COMPANY)
-                // Residents are separate entities and cannot have direct leases
+                startDate: { lte: monthEnd },
+                endDate: { gte: monthStart },
                 tenant: {
                     type: { in: ['INDIVIDUAL', 'COMPANY', 'RESIDENT'] }
                 }
@@ -429,7 +457,7 @@ exports.runBatchInvoicing = async (req, res) => {
                 }
 
                 // 3. Generate Invoice
-                const dueDate = new Date(today.getFullYear(), today.getMonth(), 10); // 10th of month
+                // dueDate is already computed for target month
 
                 // Determine who to bill: If tenant is a RESIDENT, bill their Parent
                 const billableTenantId = lease.tenant.type === 'RESIDENT' ? lease.tenant.parentId : lease.tenantId;
@@ -452,8 +480,8 @@ exports.runBatchInvoicing = async (req, res) => {
                 for (const lockerRental of (lease.lockers || [])) {
                     const lStart = new Date(lockerRental.startDate);
                     const lEnd = new Date(lockerRental.endDate);
-                    const bStart = new Date(today.getFullYear(), today.getMonth(), 1);
-                    const bEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                    const bStart = monthStart;
+                    const bEnd = monthEnd;
 
                     // Check locker is active during this billing month
                     if (lEnd < bStart || lStart > bEnd) continue;
@@ -482,9 +510,11 @@ exports.runBatchInvoicing = async (req, res) => {
                 let promoItems = [];
 
                 if (lease.hasPromotion) {
-                    const isPromoExpired = lease.promoEndDate && new Date(today) > new Date(lease.promoEndDate);
+                    const isPromoExpired = lease.promoEndDate && new Date(lease.promoEndDate) < monthStart;
                     const leaseStart = new Date(lease.startDate);
-                    const monthIndex = (today.getFullYear() - leaseStart.getFullYear()) * 12 + (today.getMonth() - leaseStart.getMonth());
+                    const lStartYear = leaseStart.getUTCFullYear();
+                    const lStartMonth = leaseStart.getUTCMonth();
+                    const monthIndex = (targetYear - lStartYear) * 12 + (targetMonthIndex - lStartMonth);
 
                     if (!isPromoExpired) {
 
