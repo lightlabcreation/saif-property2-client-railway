@@ -632,7 +632,12 @@ exports.getMonthlyRentCollectionsReport = async (req, res) => {
             include: {
                 tenant: true,
                 unit: { include: { property: true } },
-                bedroom: true
+                bedroom: true,
+                lockers: {
+                    include: {
+                        locker: true
+                    }
+                }
             }
         });
 
@@ -698,9 +703,22 @@ exports.getMonthlyRentCollectionsReport = async (req, res) => {
                                     invDiscount = Math.abs(parseFloat(promoItem.amount) || 0);
                                 }
                             }
-                            const invGross = parseFloat(inv.grossRent) || (invDiscount > 0 ? (parseFloat(inv.rent || 0) + invDiscount) : parseFloat(inv.amount || 0));
 
-                            rentCharged += invGross > 0 ? invGross : parseFloat(inv.amount || 0);
+                            // Extract locker fees from line items or serviceFees on RENT invoice
+                            let invLockerFee = 0;
+                            if (inv.items && inv.items.length > 0) {
+                                const lockerItems = inv.items.filter(i => (i.description || '').toLowerCase().includes('locker'));
+                                invLockerFee = lockerItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+                            }
+                            if (invLockerFee === 0 && parseFloat(inv.serviceFees) > 0) {
+                                invLockerFee = parseFloat(inv.serviceFees);
+                            }
+
+                            lockerCharged += invLockerFee;
+
+                            const invGross = parseFloat(inv.grossRent) || (invDiscount > 0 ? (parseFloat(inv.rent || 0) + invDiscount) : Math.max(0, parseFloat(inv.amount || 0) - invLockerFee));
+
+                            rentCharged += invGross > 0 ? invGross : Math.max(0, parseFloat(inv.amount || 0) - invLockerFee);
                             promotionalDiscount += invDiscount;
                             rentCollected += parseFloat(inv.paidAmount || 0);
                         } else if (inv.category === 'SERVICE' && (inv.description || '').toLowerCase().includes('locker')) {
@@ -711,6 +729,17 @@ exports.getMonthlyRentCollectionsReport = async (req, res) => {
                             }
                         }
                     });
+
+                    // Fallback to active lease lockers if no invoice was recorded with locker fee for that month
+                    if (lockerCharged === 0 && Array.isArray(lease.lockers) && lease.lockers.length > 0) {
+                        for (const lr of lease.lockers) {
+                            const lStart = lr.startDate ? new Date(lr.startDate) : null;
+                            const lEnd = lr.endDate ? new Date(lr.endDate) : null;
+                            if (lStart && lStart <= monthEnd && (!lEnd || lEnd >= monthStart)) {
+                                lockerCharged += parseFloat(lr.rentAmount) || 0;
+                            }
+                        }
+                    }
 
                     let depositCollected = 0;
                     invoices.filter(inv => (inv.leaseId === lease.id || (inv.unitId === lease.unitId && inv.tenantId === tenantId)) && (inv.category === 'SECURITY_DEPOSIT' || (inv.description || '').toLowerCase().includes('deposit'))).forEach(inv => {
