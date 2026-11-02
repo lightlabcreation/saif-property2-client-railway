@@ -14,7 +14,8 @@ exports.downloadInvoicePDF = async (req, res) => {
                 },
                 lease: {
                     include: { bedroom: true }
-                }
+                },
+                items: true
             }
         });
 
@@ -153,7 +154,20 @@ exports.createInvoice = async (req, res) => {
                 ]
             },
             orderBy: { endDate: 'desc' }, // Latest lease first
-            include: { unit: true, tenant: true, residents: true }
+            include: { 
+                unit: true, 
+                tenant: true, 
+                residents: true,
+                lockers: {
+                    include: {
+                        locker: {
+                            include: {
+                                property: true
+                            }
+                        }
+                    }
+                }
+            }
         });
 
         if (!lease) {
@@ -239,8 +253,64 @@ exports.createInvoice = async (req, res) => {
             discountAmt = parseFloat(req.body.discountAmount);
         }
 
+        // Calculate Active Locker Rentals
+        let lockerItems = [];
+        let totalLockerFees = 0;
+
+        if (rentAmt > 0 && Array.isArray(lease.lockers) && lease.lockers.length > 0) {
+            let targetDate = new Date();
+            if (month) {
+                const parsedDate = new Date(month + ' 1');
+                if (!isNaN(parsedDate.getTime())) {
+                    targetDate = parsedDate;
+                }
+            }
+            const bStart = new Date(Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), 1, 0, 0, 0));
+            const bEnd = new Date(Date.UTC(targetDate.getFullYear(), targetDate.getMonth() + 1, 0, 23, 59, 59));
+            const daysInMonth = bEnd.getUTCDate();
+
+            for (const lockerRental of lease.lockers) {
+                const lStart = new Date(lockerRental.startDate);
+                const lEnd = new Date(lockerRental.endDate);
+
+                // Check locker is active during this billing month
+                if (lEnd < bStart || lStart > bEnd) continue;
+
+                // Proration
+                const effectiveStart = lStart > bStart ? lStart : bStart;
+                const effectiveEnd = lEnd < bEnd ? lEnd : bEnd;
+                const daysActive = Math.floor((effectiveEnd - effectiveStart) / (1000 * 60 * 60 * 24)) + 1;
+                const lockerMonthlyRent = parseFloat(lockerRental.rentAmount) || 0;
+                const proratedLocker = daysActive < daysInMonth
+                    ? parseFloat(((lockerMonthlyRent / daysInMonth) * daysActive).toFixed(2))
+                    : lockerMonthlyRent;
+
+                if (proratedLocker <= 0) continue;
+
+                const lockerNumber = lockerRental.locker?.lockerNumber || '';
+                const propName = lockerRental.locker?.property?.name || lease.unit?.property?.name || 'Locker';
+                const lockerDesc = `Locker - ${propName} / ${lockerNumber}`;
+
+                const alreadyInItems = combinedLineItems.some(i => 
+                    i.description && i.description.toLowerCase().includes('locker') && i.description.includes(lockerNumber)
+                );
+
+                if (!alreadyInItems) {
+                    lockerItems.push({
+                        description: lockerDesc,
+                        amount: proratedLocker
+                    });
+                }
+                totalLockerFees += proratedLocker;
+            }
+        }
+
+        if (lockerItems.length > 0) {
+            combinedLineItems = [...combinedLineItems, ...lockerItems];
+        }
+
         const netRent = Math.max(0, parseFloat((finalRent - discountAmt).toFixed(2)));
-        const totalAmount = netRent + feesAmt;
+        const totalAmount = netRent + feesAmt + totalLockerFees;
 
         // Generate Invoice Number
         const prefix = req.body.category === 'SECURITY_DEPOSIT' ? 'INV-DEP' : 'INV-MAN';
@@ -260,7 +330,7 @@ exports.createInvoice = async (req, res) => {
                         grossRent: finalRent,
                         discountAmount: discountAmt,
                         rent: netRent,
-                        serviceFees: feesAmt,
+                        serviceFees: feesAmt + totalLockerFees,
                         amount: totalAmount,
                         paidAmount: 0,
                         balanceDue: totalAmount,

@@ -143,6 +143,15 @@ exports.getAllTenants = async (req, res) => {
                                 include: {
                                     property: true
                                 }
+                            },
+                            lockers: {
+                                include: {
+                                    locker: {
+                                        include: {
+                                            property: true
+                                        }
+                                    }
+                                }
                             }
                         }
                     },
@@ -261,6 +270,7 @@ exports.getAllTenants = async (req, res) => {
                 leaseEndDate: activeLease?.endDate || null,
                 activeLeaseRole: activeLease ? (t.leases.find(l => l.id === activeLease.id) ? 'TENANT' : 'RESIDENT') : null,
                 rentAmount: activeLease?.monthlyRent || 0,
+                lockers: activeLease?.lockers || [],
                 hasPromotion: activeLease?.hasPromotion || false,
                 promoMonthlyDiscount: activeLease?.hasPromotion ? (parseFloat(activeLease?.promoMonthlyDiscount) || 0) : 0,
                 promoType: activeLease?.promoType || null,

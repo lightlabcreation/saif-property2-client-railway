@@ -132,8 +132,19 @@ const generateInvoicePDF = (invoice, res, settings = {}) => {
         doc.moveTo(50, currentY - 5).lineTo(550, currentY - 5).strokeColor(colors.accent).lineWidth(0.5).stroke();
     }
 
-    // Service Fees Row
-    if (parseFloat(invoice.serviceFees) > 0) {
+    // Line Items (Locker rentals, individual service items, etc.)
+    if (Array.isArray(invoice.items) && invoice.items.length > 0) {
+        const positiveItems = invoice.items.filter(i => 
+            parseFloat(i.amount) > 0 && 
+            !i.description?.toLowerCase().includes('promotional discount')
+        );
+
+        positiveItems.forEach(item => {
+            const isLocker = item.description?.toLowerCase().includes('locker');
+            drawRow(item.description, isLocker ? 'Locker Fee' : 'Service Charges', item.amount);
+        });
+    } else if (parseFloat(invoice.serviceFees) > 0) {
+        // Fallback Service Fees Row when no granular line items exist
         drawRow(invoice.description || 'Service/Utility Fees', 'Service Charges', invoice.serviceFees);
     }
 
