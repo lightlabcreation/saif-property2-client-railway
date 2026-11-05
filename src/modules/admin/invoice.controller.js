@@ -737,6 +737,11 @@ exports.deleteInvoice = async (req, res) => {
                 data: { invoiceId: null }
             });
 
+            // 3.5 Delete associated line items
+            await tx.invoiceLineItem.deleteMany({
+                where: { invoiceId: id }
+            });
+
             // 4. Finally delete the Invoice
             await tx.invoice.delete({
                 where: { id }
